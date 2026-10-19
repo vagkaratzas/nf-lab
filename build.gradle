@@ -10,6 +10,7 @@ nextflowPlugin {
     provider = 'vagkaratzas'
     className = 'vagkaratzas.plugin.LabPlugin'
     extensionPoints = [
+        'vagkaratzas.plugin.LabExecutor',
         'vagkaratzas.plugin.LabExtension',
         'vagkaratzas.plugin.LabFactory'
     ]
