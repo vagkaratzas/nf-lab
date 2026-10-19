@@ -185,14 +185,20 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 
 
 def main() -> FastAPI:
-    """`uvicorn --factory` entry point: one simulated liquid handler."""
+    """`uvicorn --factory` entry point: one simulated liquid handler.
+
+    NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation).
+    """
+    step = float(os.environ.get("NF_LAB_STEP", "1.0"))
+    if os.environ.get("NF_LAB_BACKEND", "fake") == "plr":
+        from .plr import PlrSimBackend  # imported only when used: PyLabRobot is heavy
+        device_id, backend = "plr-sim-1", PlrSimBackend(step=step)
+    else:
+        device_id, backend = "fake-1", FakeBackend(step=step)
     return create_app(
         os.environ.get("NF_LAB_LEDGER", "ledger.sqlite"),
-        [Device(
-            "fake-1", "liquid-handling",
-            FakeBackend(step=float(os.environ.get("NF_LAB_STEP", "1.0"))),
-            silent_after=float(os.environ.get("NF_LAB_SILENT_AFTER", "600")),
-        )],
+        [Device(device_id, "liquid-handling", backend,
+                silent_after=float(os.environ.get("NF_LAB_SILENT_AFTER", "600")))],
     )
 
 
