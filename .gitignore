@@ -9,3 +9,4 @@ work
 bin
 .venv
 __pycache__
+*.sqlite
