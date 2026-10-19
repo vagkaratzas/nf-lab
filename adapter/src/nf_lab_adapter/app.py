@@ -187,12 +187,13 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 def main() -> FastAPI:
     """`uvicorn --factory` entry point: one simulated liquid handler.
 
-    NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation).
+    NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation);
+    with plr, NF_LAB_VISUALIZER=1 serves PyLabRobot's browser view of the deck.
     """
     step = float(os.environ.get("NF_LAB_STEP", "1.0"))
     if os.environ.get("NF_LAB_BACKEND", "fake") == "plr":
         from .plr import PlrSimBackend  # imported only when used: PyLabRobot is heavy
-        device_id, backend = "plr-sim-1", PlrSimBackend(step=step)
+        device_id, backend = "plr-sim-1", PlrSimBackend(step=step, visualize=os.environ.get("NF_LAB_VISUALIZER") == "1")
     else:
         device_id, backend = "fake-1", FakeBackend(step=step)
     return create_app(
