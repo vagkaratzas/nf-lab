@@ -64,8 +64,8 @@ class Adapter:
             while not task.done():
                 await asyncio.wait({task}, timeout=min(1.0, device.silent_after / 4))
                 if not task.done() and self._silent(job.job_id, device):
-                    # Stop driving a device we can no longer hear. The lock stays held:
-                    # a human checks the deck before release.
+                    # Stop driving a device we can no longer hear. Past the stop boundary the
+                    # lock stays held: a human checks the deck before release.
                     task.cancel()
                     await asyncio.wait({task})
                     self._fail(job.job_id, "device_silent")

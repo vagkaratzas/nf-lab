@@ -96,6 +96,15 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
             assert repeat.status_code == 200 and repeat.json()["job_id"] == job["job_id"]
 
 
+def test_preflight_failure_frees_the_device_without_release(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        first = wait(c, c.post("/jobs", json=req("p", "preflight_fail")).json()["job_id"])  # never released
+        assert first["state"] == "failed_preflight" and first["released_at"] is None
+        retry = c.post("/jobs", json=req("p", "preflight_fail")).json()  # an exit-75 retry: same key
+        assert wait(c, retry["job_id"])["attempt"] == 2  # ran: not queued behind attempt 1
+        assert wait(c, c.post("/jobs", json=req("next")).json()["job_id"])["state"] == "done"
+
+
 def test_safe_stop_cancels_before_boundary_and_finishes_after(tmp_path):
     with adapter(tmp_path / "ledger.sqlite", step=0.3) as c:
         early = c.post("/jobs", json=req("s")).json()

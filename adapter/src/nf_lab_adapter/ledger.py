@@ -118,9 +118,15 @@ class Ledger:
         return self.get(job_id), True
 
     def next_runnable(self, device_id: str) -> Job | None:
-        """Oldest queued job for the device, or None while the device is locked."""
+        """Oldest queued job for the device, or None while the device is locked.
+
+        Locked = a job has started and isn't released. A pre-flight failure never
+        locks: nothing was touched and no outputs wait on the deck, so its retry
+        (same key) and other jobs can start without a release.
+        """
         locked = self.db.execute(
-            "SELECT 1 FROM jobs WHERE device_id = ? AND started_at IS NOT NULL AND released_at IS NULL",
+            "SELECT 1 FROM jobs WHERE device_id = ? AND started_at IS NOT NULL AND released_at IS NULL"
+            " AND state != 'failed_preflight'",
             (device_id,),
         ).fetchone()
         if locked:
