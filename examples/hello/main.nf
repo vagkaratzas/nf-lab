@@ -2,6 +2,7 @@
 
 process WET {
     label 'process_wet'
+    hints 'lab/capability': 'liquid-handling'
 
     input:
     val sample
