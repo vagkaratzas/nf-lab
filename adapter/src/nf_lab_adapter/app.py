@@ -112,6 +112,8 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        for d in devices:
+            await d.backend.setup()
         workers = [asyncio.create_task(adapter.worker(d)) for d in devices]
         yield
         for w in workers:

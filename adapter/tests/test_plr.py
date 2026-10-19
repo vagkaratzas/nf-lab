@@ -18,7 +18,7 @@ def test_transfer_moves_liquid_column_by_column(tmp_path):
         job = wait(c, submit(c, "k")["job_id"])
         assert (job["state"], job["stoppable"]) == ("done", False)
         assert job["result"]["wells"]["S1"] == "A1" and job["result"]["wells"]["S9"] == "A2"  # 8 channels per column
-        assert set(job["result"]["volume_ul"].values()) == {50.0}  # read back from the simulated wells
+        assert set(job["result"]["volume_ul"].values()) == {150.0}  # read back from the simulated wells
 
 
 def test_safe_stop_cancels_before_first_aspirate_and_finishes_after(tmp_path):

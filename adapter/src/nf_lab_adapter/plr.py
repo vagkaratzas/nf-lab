@@ -7,7 +7,7 @@ the deck is reset to that state (an operator's job on a real device), so in
 simulation a free robot is also a ready one (DESIGN open question 9).
 
 With `visualize=True`, PyLabRobot's browser view of the deck starts with the
-first job (http://127.0.0.1:1337, or the next free port; the URL is logged).
+adapter (http://127.0.0.1:1337, or the next free port; the URL is logged).
 """
 
 import asyncio
@@ -24,7 +24,7 @@ from .backends import Progress
 from .contract import Job, State
 
 CHANNELS = 8
-SAMPLE_UL = 200.0  # what each source well holds when the deck is loaded
+SAMPLE_UL = 300.0  # what each source well holds (of 360 µL): the visualizer shades by volume / max
 
 set_volume_tracking(True)  # process-wide: wells track volume, so a transfer is checkable
 
@@ -35,26 +35,28 @@ class PlrSimBackend:
 
     PROTOCOLS = {"plate_transfer"}
 
-    def __init__(self, step: float = 0.5, volume_ul: float = 50.0, visualize: bool = False):
+    def __init__(self, step: float = 0.5, volume_ul: float = 150.0, visualize: bool = False):
         self.step = step  # simulated seconds per robot operation
         self.volume_ul = volume_ul
         self.visualize = visualize
-        self.lh: LiquidHandler | None = None  # set up on the first job: needs the event loop
+        self.lh: LiquidHandler | None = None  # set up when the adapter starts
 
     async def _op(self, progress: Progress, coro) -> None:
         await coro
         await asyncio.sleep(self.step)  # the chatterbox is instant; a robot isn't
         progress()  # every operation is a device report: refresh the heartbeat
 
+    async def setup(self) -> None:
+        """Start the simulated robot, load its deck, and serve the browser view."""
+        lh = LiquidHandler(backend=LiquidHandlerChatterboxBackend(num_channels=CHANNELS), deck=STARLetDeck())
+        await lh.setup()
+        self.deck = self._load_deck(lh)
+        if self.visualize:
+            await Visualizer(resource=lh, open_browser=False).setup()
+        self.lh = lh
+
     async def _ready(self):
-        """The robot with a freshly loaded deck; started on first use."""
-        if self.lh is None:
-            lh = LiquidHandler(backend=LiquidHandlerChatterboxBackend(num_channels=CHANNELS), deck=STARLetDeck())
-            await lh.setup()
-            self.deck = self._load_deck(lh)
-            if self.visualize:
-                await Visualizer(resource=lh, open_browser=False).setup()
-            self.lh = lh
+        """The robot with its deck reset to the loaded state."""
         tips, src, dst = self.deck
         for w in src.children:
             w.tracker.set_volume(SAMPLE_UL)

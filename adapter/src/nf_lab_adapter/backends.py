@@ -29,6 +29,7 @@ class Progress(Protocol):
 
 
 class Backend(Protocol):
+    async def setup(self) -> None: ...  # once, when the adapter starts
     async def run(self, job: Job, progress: Progress) -> dict: ...
 
 
@@ -39,6 +40,9 @@ class FakeBackend:
 
     def __init__(self, step: float = 0.05):
         self.step = step  # seconds per simulated step
+
+    async def setup(self) -> None:
+        pass
 
     async def run(self, job: Job, progress: Progress) -> dict:
         script = job.protocol
