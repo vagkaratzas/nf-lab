@@ -7,3 +7,5 @@
 build
 work
 bin
+.venv
+__pycache__
