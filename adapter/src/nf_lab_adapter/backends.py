@@ -63,4 +63,4 @@ class FakeBackend:
         progress()
         if script == "protocol_fail":
             raise RuntimeError("tip pickup failed mid-transfer")
-        return {"sample_ids": job.sample_ids, "wells": len(job.sample_ids)}
+        return {"wells": len(job.wells)}

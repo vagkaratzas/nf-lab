@@ -64,9 +64,18 @@ def log(msg: str, quiet: bool = False) -> None:
             os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stderr.fileno())
 
 
-def default_key(protocol: str, version: str, samples: list[str]) -> str:
-    # Sample order is kept: it decides which well each sample goes to.
-    return hashlib.sha256(json.dumps([protocol, version, samples]).encode()).hexdigest()
+def well(token: str) -> dict:
+    """`A1:S01` or `D2:NC1:negative_control` (type defaults to sample)."""
+    parts = token.split(":")
+    if len(parts) not in (2, 3) or len(parts[0]) < 2 or not parts[0][1:].isdigit() or not parts[1]:
+        raise argparse.ArgumentTypeError(f"{token!r}: expected WELL:SAMPLE[:TYPE], e.g. A1:S01")
+    return {"row": parts[0][0].upper(), "column": int(parts[0][1:]), "sample": parts[1],
+            "type": parts[2] if len(parts) == 3 else "sample"}
+
+
+def default_key(protocol: str, version: str, plate: str, wells: list[dict]) -> str:
+    # wells sorted by the caller (row, column): the order they're listed in carries no meaning
+    return hashlib.sha256(json.dumps([protocol, version, plate, wells]).encode()).hexdigest()
 
 
 class Client:
@@ -120,7 +129,8 @@ def run(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     _logfile = open(outdir / "labctl.log", "a")
-    key = args.key or default_key(args.protocol, args.protocol_version, args.samples)
+    wells = sorted(args.wells, key=lambda w: (w["row"], w["column"]))
+    key = args.key or default_key(args.protocol, args.protocol_version, args.plate, wells)
     client = Client(args.adapter, args.grace, args.poll)
     job: dict | None = None
 
@@ -141,7 +151,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         job = client.call("POST", "/jobs", {
             "capability": args.capability, "protocol": args.protocol,
-            "protocol_version": args.protocol_version, "sample_ids": args.samples,
+            "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
             "idempotency_key": key,
         })
         log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id']}: {job['state']}")
@@ -177,8 +187,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--capability", required=True)
     r.add_argument("--protocol", required=True)
     r.add_argument("--protocol-version", required=True)
-    r.add_argument("--samples", nargs="+", required=True, metavar="ID")
-    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version and samples)")
+    r.add_argument("--plate", required=True, help="plate ID from the plate map")
+    r.add_argument("--wells", nargs="+", required=True, type=well, metavar="WELL:SAMPLE[:TYPE]",
+                   help="the plate's filled wells, e.g. A1:S01 D2:NC1:negative_control H12:BLK1:blank")
+    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate and wells)")
     r.add_argument("--wait", action="store_true", help="poll until the job ends; exit with its code")
     r.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
     r.add_argument("--poll", type=float, default=2.0, help="seconds between status polls")

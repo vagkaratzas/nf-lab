@@ -7,7 +7,7 @@ and is the contract other adapter implementations follow.
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class State(StrEnum):
@@ -23,14 +23,40 @@ class State(StrEnum):
 FINAL = {State.done, State.failed_preflight, State.failed_in_protocol, State.stopped}
 
 
+class WellType(StrEnum):
+    sample = "sample"
+    negative_control = "negative_control"
+    blank = "blank"
+
+
+class Well(BaseModel):
+    """One filled well of the plate map. Row and column cover plates up to 384 wells;
+    the backend binding checks they exist on its labware."""
+
+    row: str = Field(pattern=r"^[A-P]$")
+    column: int = Field(ge=1, le=24)
+    sample: str = Field(min_length=1, description="Sample ID, or the control's or blank's own ID")
+    type: WellType = WellType.sample
+
+
 class SubmitRequest(BaseModel):
     capability: str = Field(min_length=1, examples=["liquid-handling"])
     protocol: str = Field(min_length=1)
     protocol_version: str = Field(min_length=1)
-    sample_ids: list[str] = Field(min_length=1)
+    plate: str = Field(min_length=1, description="Plate ID from the plate map")
+    wells: list[Well] = Field(min_length=1, description="One per filled well; kept in row, column order")
     idempotency_key: str = Field(
-        min_length=1, description="hash(protocol version + sample IDs); one physical job"
+        min_length=1, description="hash(protocol, version, plate, wells in row, column order); one physical job"
     )
+
+    @field_validator("wells")
+    @classmethod
+    def one_sample_per_well(cls, wells: list[Well]) -> list[Well]:
+        wells = sorted(wells, key=lambda w: (w.row, w.column))  # the order wells are listed in carries no meaning
+        for a, b in zip(wells, wells[1:]):
+            if (a.row, a.column) == (b.row, b.column):
+                raise ValueError(f"well {a.row}{a.column} listed twice")
+        return wells
 
 
 class Job(SubmitRequest):

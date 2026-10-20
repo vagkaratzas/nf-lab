@@ -15,9 +15,18 @@ def adapter(ledger: Path, step: float = 0.05, silent_after: float = 600) -> Test
     return TestClient(create_app(str(ledger), [Device("fake-1", "liquid-handling", FakeBackend(step), silent_after)]))
 
 
+def wells(*tokens: str) -> list[dict]:
+    """wells("A1:S1", "B1:NC1:negative_control")"""
+    out = []
+    for t in tokens:
+        pos, sample, *kind = t.split(":")
+        out.append({"row": pos[0], "column": int(pos[1:]), "sample": sample, "type": kind[0] if kind else "sample"})
+    return out
+
+
 def req(key: str, protocol: str = "ok", **kw) -> dict:
     return {"capability": "liquid-handling", "protocol": protocol, "protocol_version": "1.0",
-            "sample_ids": ["S1", "S2"], "idempotency_key": key, **kw}
+            "plate": "P1", "wells": wells("A1:S1", "B1:S2"), "idempotency_key": key, **kw}
 
 
 def wait(c: TestClient, job_id: str, until=lambda j: j["state"] in FINAL, timeout: float = 5) -> dict:
@@ -48,7 +57,31 @@ def test_same_key_returns_same_job(tmp_path):
         after = c.post("/jobs", json=req("k"))
         assert after.status_code == 200 and after.json()["job_id"] == done["job_id"]
 
-        assert c.post("/jobs", json=req("k", sample_ids=["S9"])).status_code == 409
+        assert c.post("/jobs", json=req("k", wells=wells("B1:S2", "A1:S1"))).status_code == 200  # order-free
+        assert c.post("/jobs", json=req("k", wells=wells("A1:S9"))).status_code == 409
+        assert c.post("/jobs", json=req("k", plate="P2")).status_code == 409
+
+
+def test_plate_map_is_validated(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        for bad in [wells("A1:S1", "A1:S2"), wells("Q1:S1"), wells("A25:S1"), wells("A1:S1:standard"), []]:
+            assert c.post("/jobs", json=req("v", wells=bad)).status_code == 422, bad
+        stored = c.post("/jobs", json=req("v", wells=wells("H12:BLK1:blank", "C6:S43", "A2:NC1:negative_control")))
+        assert [(w["row"], w["column"]) for w in stored.json()["wells"]] == [("A", 2), ("C", 6), ("H", 12)]
+
+
+def test_a_ledger_from_before_the_plate_map_is_refused(tmp_path):
+    import sqlite3
+    from nf_lab_adapter.ledger import SCHEMA
+    old = SCHEMA.replace("plate TEXT NOT NULL,\n    wells TEXT NOT NULL,", "sample_ids TEXT NOT NULL,")
+    assert "sample_ids" in old
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(old)
+    try:
+        create_app(str(tmp_path / "old.sqlite"), [])
+    except RuntimeError as e:
+        assert "predates the plate map" in str(e)
+    else:
+        raise AssertionError("old ledger accepted")
 
 
 def test_two_jobs_on_one_device_run_serially(tmp_path):

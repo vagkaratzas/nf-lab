@@ -39,9 +39,9 @@ def serve(tmp_path, step: float = 0.05):
 
 
 def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float = 2, wait=True,
-           out: Path | None = None, **popen):
+           out: Path | None = None, wells=("A1:S1", "B1:S2"), **popen):
     cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--capability", "liquid-handling",
-           "--protocol", protocol, "--protocol-version", "1.0", "--samples", "S1", "S2",
+           "--protocol", protocol, "--protocol-version", "1.0", "--plate", "P1", "--wells", *wells,
            "--adapter", url, "--poll", "0.05", "--grace", str(grace),
            "--outdir", str(out or tempfile.mkdtemp())]
     cmd += ["--key", key] if key else []
@@ -72,17 +72,24 @@ def test_done_writes_outputs_releases_and_a_rerun_runs_nothing(tmp_path):
     with serve(tmp_path) as (url, _):
         rc, job = finish(labctl(url, out=tmp_path / "w1"))
         assert rc == 0 and job["state"] == "done" and job["released_at"]
-        rc, again = finish(labctl(url, out=tmp_path / "w2"))  # same default key: the stored job, nothing new
+        rc, again = finish(labctl(url, out=tmp_path / "w2", wells=("B1:S2", "A1:S1")))  # same key, any order
         assert rc == 0 and again["job_id"] == job["job_id"] and again["attempt"] == 1
 
     for w in ("w1", "w2"):  # a fresh work dir gets the same stored outputs
         assert json.loads((tmp_path / w / "result.json").read_text()) == job["result"]
         prov = json.loads((tmp_path / w / "provenance.json").read_text())
         assert prov["job_id"] == job["job_id"] and prov["state"] == "done" and "result" not in prov
-        assert (prov["device_id"], prov["protocol_version"], prov["sample_ids"]) == ("fake-1", "1.0", ["S1", "S2"])
+        assert (prov["device_id"], prov["protocol_version"], prov["plate"]) == ("fake-1", "1.0", "P1")
+        assert [(w["row"], w["column"], w["sample"], w["type"]) for w in prov["wells"]] == [
+            ("A", 1, "S1", "sample"), ("B", 1, "S2", "sample")]
     log = (tmp_path / "w1" / "labctl.log").read_text()
     assert "-> POST /jobs {" in log and "<- 201 {" in log and f"-> POST /jobs/{job['job_id']}/release" in log
     assert "<- 200 {" in (tmp_path / "w2" / "labctl.log").read_text()
+
+
+def test_a_malformed_well_is_refused_before_any_request(tmp_path):
+    p = labctl("http://127.0.0.1:9", wells=("A1",), out=tmp_path / "w")
+    assert finish(p)[0] == 2 and not (tmp_path / "w").exists()  # argparse error
 
 
 def test_exit_codes_follow_the_stop_boundary(tmp_path):

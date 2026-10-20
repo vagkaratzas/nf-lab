@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     capability TEXT NOT NULL,
     protocol TEXT NOT NULL,
     protocol_version TEXT NOT NULL,
-    sample_ids TEXT NOT NULL,
+    plate TEXT NOT NULL,
+    wells TEXT NOT NULL,
     state TEXT NOT NULL,
     stoppable INTEGER NOT NULL DEFAULT 1,
     stop_requested INTEGER NOT NULL DEFAULT 0,
@@ -40,7 +41,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_live_job_per_key
     ON jobs(idempotency_key) WHERE state != 'failed_preflight';
 """
 
-PAYLOAD = ("capability", "protocol", "protocol_version", "sample_ids")
+PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
 
 
 class KeyConflict(Exception):
@@ -57,6 +58,9 @@ class Ledger:
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        if "wells" not in {c["name"] for c in self.db.execute("PRAGMA table_info(jobs)")}:
+            # shortcut: no migrations while the contract is a prototype; add them once ledgers hold real runs.
+            raise RuntimeError(f"{path} predates the plate map (sample_ids column): delete it or point NF_LAB_LEDGER elsewhere")
         self._recover()
 
     def _recover(self) -> None:
@@ -77,7 +81,7 @@ class Ledger:
         if row is None:
             return None
         d = dict(row)
-        d["sample_ids"] = json.loads(d["sample_ids"])
+        d["wells"] = json.loads(d["wells"])
         d["result"] = json.loads(d["result"]) if d["result"] else None
         return Job(**d)
 
@@ -108,10 +112,10 @@ class Ledger:
             try:
                 self.db.execute(
                     """INSERT INTO jobs (job_id, idempotency_key, attempt, device_id, capability, protocol,
-                                         protocol_version, sample_ids, state, submitted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
+                                         protocol_version, plate, wells, state, submitted_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
                     (job_id, req.idempotency_key, attempts + 1, device_id, req.capability, req.protocol,
-                     req.protocol_version, json.dumps(req.sample_ids), now()),
+                     req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]), now()),
                 )
             except sqlite3.IntegrityError:  # a live job already holds this key
                 return earlier, False

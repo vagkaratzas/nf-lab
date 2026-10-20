@@ -2,7 +2,8 @@
 
 PyLabRobot is a library with no job service, so the binding runs the protocol
 in-process. One simulated robot and deck live as long as the adapter: tips, a
-source plate holding the samples, an empty destination plate. Before each job
+source plate holding the samples, a buffer plate for controls and blanks, an
+empty destination plate. Before each job
 the deck is reset to that state (an operator's job on a real device), so in
 simulation a free robot is also a ready one (DESIGN open question 9).
 
@@ -21,7 +22,7 @@ from pylabrobot.resources import (
 from pylabrobot.visualizer import Visualizer
 
 from .backends import Progress
-from .contract import Job, State
+from .contract import Job, State, WellType
 
 CHANNELS = 8
 SAMPLE_UL = 300.0  # what each source well holds (of 360 µL): the visualizer shades by volume / max
@@ -30,8 +31,10 @@ set_volume_tracking(True)  # process-wide: wells track volume, so a transfer is 
 
 
 class PlrSimBackend:
-    """`plate_transfer`: move `volume_ul` of each sample from the source plate to
-    the same well of the destination plate, one column (8 channels) at a time."""
+    """`plate_transfer`: fill each plate-map well of the destination plate with
+    `volume_ul` from the same well of its source: the sample plate for samples,
+    the buffer plate for controls and blanks. One column at a time, one channel
+    per well; wells not in the plate map stay empty."""
 
     PROTOCOLS = {"plate_transfer"}
 
@@ -57,45 +60,46 @@ class PlrSimBackend:
 
     async def _ready(self):
         """The robot with its deck reset to the loaded state."""
-        tips, src, dst = self.deck
-        for w in src.children:
+        tips, src, buf, dst = self.deck
+        for w in src.children + buf.children:
             w.tracker.set_volume(SAMPLE_UL)
         for w in dst.children:
             w.tracker.set_volume(0)
         for channel in self.lh.head.values():
             channel.clear()  # a cancelled job may have left tips on the channels
-        return self.lh, tips, src, dst
+        return self.lh, tips, src, buf, dst
 
     async def run(self, job: Job, progress: Progress) -> dict:
-        lh, tips, src, dst = await self._ready()
+        lh, tips, src, buf, dst = await self._ready()
         await asyncio.sleep(self.step)  # deck check
         progress()
         # pre-flight: everything checkable before material is touched
         if job.protocol not in self.PROTOCOLS:
             raise ValueError(f"unknown protocol {job.protocol!r}")
-        n = len(job.sample_ids)
-        if n > src.num_items:
-            raise ValueError(f"{n} samples don't fit one {src.num_items}-well plate")
+        ids = [f"{w.row}{w.column}" for w in job.wells]
+        rows = "ABCDEFGHIJKLMNOP"[:dst.num_items_y]
+        if off := [i for w, i in zip(job.wells, ids) if w.row not in rows or w.column > dst.num_items_x]:
+            raise ValueError(f"wells {', '.join(off)} aren't on a {dst.num_items}-well plate")
         if self.volume_ul > SAMPLE_UL:
             raise ValueError(f"{self.volume_ul} µL asked, source wells hold {SAMPLE_UL} µL")
         progress(state=State.running)
 
         # On cancellation the next await raises: commands simply stop, nothing is aborted.
-        for col in range(0, n, CHANNELS):
-            wells = slice(col, min(col + CHANNELS, n))
-            await self._op(progress, lh.pick_up_tips(tips.children[wells]))
-            k = len(src.children[wells])
+        batches: dict[tuple[int, bool], list[str]] = {}  # (column, from the sample plate) -> wells
+        for w, i in zip(job.wells, ids):  # wells come in row, column order (contract)
+            batches.setdefault((w.column, w.type == WellType.sample), []).append(i)
+        for (_, is_sample), batch in sorted(batches.items()):
+            source = src if is_sample else buf
+            await self._op(progress, lh.pick_up_tips(tips.get_items(batch)))
             progress(stoppable=False)  # first aspirate: material is now touched
-            await self._op(progress, lh.aspirate(src.children[wells], vols=[self.volume_ul] * k))
-            await self._op(progress, lh.dispense(dst.children[wells], vols=[self.volume_ul] * k))
-            await self._op(progress, lh.drop_tips(tips.children[wells]))
+            await self._op(progress, lh.aspirate(source.get_items(batch), vols=[self.volume_ul] * len(batch)))
+            await self._op(progress, lh.dispense(dst.get_items(batch), vols=[self.volume_ul] * len(batch)))
+            await self._op(progress, lh.drop_tips(tips.get_items(batch)))
 
-        moved = dst.children[:n]
         return {
-            "sample_ids": job.sample_ids,
-            "plate": dst.name,
-            "wells": {s: w.get_identifier() for s, w in zip(job.sample_ids, moved)},
-            "volume_ul": {s: w.tracker.get_used_volume() for s, w in zip(job.sample_ids, moved)},
+            "plate": job.plate,
+            "wells": [{**w.model_dump(mode="json"), "volume_ul": dst.get_item(i).tracker.get_used_volume()}
+                      for w, i in zip(job.wells, ids)],
         }
 
     @staticmethod
@@ -105,8 +109,9 @@ class PlrSimBackend:
         lh.deck.assign_child_resource(tip_car, rails=3)
         plate_car = PLT_CAR_L5AC_A00("plate_carrier")
         plate_car[0] = src = cor_96_wellplate_360uL_Fb("source")
-        plate_car[1] = dst = cor_96_wellplate_360uL_Fb("destination")
+        plate_car[1] = buf = cor_96_wellplate_360uL_Fb("buffer")
+        plate_car[2] = dst = cor_96_wellplate_360uL_Fb("destination")
         lh.deck.assign_child_resource(plate_car, rails=9)
-        for w in src.children:
+        for w in src.children + buf.children:
             w.tracker.set_volume(SAMPLE_UL)
-        return tips, src, dst
+        return tips, src, buf, dst
