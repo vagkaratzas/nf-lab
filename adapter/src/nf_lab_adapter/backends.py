@@ -36,7 +36,7 @@ class Backend(Protocol):
 class FakeBackend:
     """Scripted device for tests. The protocol name picks the script."""
 
-    SCRIPTS = {"ok", "preflight_fail", "protocol_fail", "silent", "estop"}
+    SCRIPTS = {"ok", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
 
     def __init__(self, step: float = 0.05):
         self.step = step  # seconds per simulated step
@@ -50,7 +50,7 @@ class FakeBackend:
         progress()
         if script not in self.SCRIPTS:
             raise ValueError(f"unknown protocol {script!r}")
-        if script == "preflight_fail":
+        if script == "preflight_fail" or (script == "preflight_once" and job.attempt == 1):
             raise RuntimeError("deck check failed: tip rack missing")
         progress(state=State.running)
         await asyncio.sleep(self.step)

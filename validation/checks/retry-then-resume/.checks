@@ -1,0 +1,8 @@
+# A wet task that passed on an exit-75 retry, then -resume. Nextflow may resubmit it
+# (PR #7194; issues #6884, #7792): the ledger returns the done job, nothing runs twice.
+start_adapter
+nf --protocol preflight_once
+[[ $(logged 'Re-submitted process > WET') == 1 ]]
+nf --protocol preflight_once -resume
+echo "resume: cached=$(logged 'Cached process > WET') submitted=$(logged 'Submitted process > WET')"
+[[ $(sql "SELECT group_concat(state) FROM (SELECT state FROM jobs ORDER BY attempt)") == failed_preflight,done ]]

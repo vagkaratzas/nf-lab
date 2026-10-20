@@ -1,0 +1,8 @@
+# Criterion: a fresh launch dir doesn't re-run the wet step: the ledger returns the existing job.
+start_adapter
+nf
+mkdir fresh && cd fresh
+nf
+[[ $(logged 'Submitted process > WET') == 1 ]]  # no cache here, so Nextflow submits again...
+grep -q -- '<- 200' work/*/*/labctl.log         # ...and the adapter answers with the existing job
+[[ $(sql "SELECT count(*) FROM jobs") == 1 ]]

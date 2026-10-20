@@ -1,0 +1,15 @@
+# withLabel 'process_wet' config: exit 75 retried, exit 1 terminates, `cache` honoured.
+start_adapter
+fails nf --protocol preflight_fail
+[[ $(logged 'Re-submitted process > WET') == 2 ]]  # maxRetries 2
+[[ $(sql "SELECT max(attempt) FROM jobs WHERE protocol = 'preflight_fail'") == 3 ]]
+fails nf --protocol protocol_fail
+[[ $(logged 'Re-submitted process > WET') == 0 ]]  # liquid moved: never retried
+# ...and the robot stays locked for a human; release it as they would after checking the deck
+curl -sf -X POST "$NF_LAB_ADAPTER/jobs/$(sql "SELECT job_id FROM jobs WHERE protocol = 'protocol_fail'")/release" > /dev/null
+nf
+nf -resume
+[[ $(logged 'Cached process > WET') == 1 ]]
+WET_CACHE=false nf -resume
+[[ $(logged 'Cached process > WET') == 0 ]]        # cache = false: Nextflow re-runs the task...
+[[ $(sql "SELECT count(*) FROM jobs WHERE protocol = 'ok'") == 1 ]]  # ...the ledger doesn't

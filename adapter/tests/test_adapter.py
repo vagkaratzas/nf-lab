@@ -119,6 +119,9 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
         assert first["state"] == "failed_preflight" and first["stoppable"]
         retry = c.post("/jobs", json=req("p", "preflight_fail"))
         assert retry.status_code == 201 and retry.json()["attempt"] == 2
+        once = run(c, "o", "preflight_once")  # fails attempt 1 only: a retry that succeeds
+        assert once["state"] == "failed_preflight"
+        assert run(c, "o", "preflight_once")["state"] == "done"
         wait(c, retry.json()["job_id"])
         c.post(f"/jobs/{retry.json()['job_id']}/release")
 

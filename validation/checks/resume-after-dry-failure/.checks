@@ -1,0 +1,8 @@
+# Criterion: -resume after a dry-step failure does not re-run the wet step.
+start_adapter
+fails nf --fail_dry true
+[[ $(logged 'Submitted process > WET') == 1 ]]
+nf -resume
+[[ $(logged 'Cached process > WET') == 1 ]]
+[[ $(logged 'Submitted process > DRY') == 1 ]]
+[[ $(sql "SELECT count(*) FROM jobs") == 1 ]]
