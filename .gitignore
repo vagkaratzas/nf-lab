@@ -10,3 +10,4 @@ work
 .venv
 __pycache__
 *.sqlite
+results
