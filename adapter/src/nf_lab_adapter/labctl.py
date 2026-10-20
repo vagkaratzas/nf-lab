@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """labctl: the adapter's CLI client, run as a wet task's script (executor shape B).
 
 `labctl run --wait` submits the job (for a key already in the ledger the adapter
@@ -24,7 +25,7 @@ Files in `--outdir` (default: the current dir, i.e. the task work dir):
 They are written before the release, from the ledger: a key that is already done
 writes its stored outputs and runs nothing.
 
-Stdlib only, so it runs wherever the task runs.
+Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 """
 
 import argparse
@@ -36,7 +37,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1}
@@ -54,7 +55,7 @@ def log(msg: str, quiet: bool = False) -> None:
     if not quiet:
         print(f"labctl: {msg}", file=sys.stderr, flush=True)
     if _logfile:
-        _logfile.write(f"{datetime.now(UTC).isoformat()} {msg}\n")
+        _logfile.write(f"{datetime.now(timezone.utc).isoformat()} {msg}\n")
         _logfile.flush()
 
 

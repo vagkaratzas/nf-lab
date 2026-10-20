@@ -6,7 +6,7 @@
 # Ignore Gradle build output directory
 build
 work
-bin
+/bin
 .venv
 __pycache__
 *.sqlite
