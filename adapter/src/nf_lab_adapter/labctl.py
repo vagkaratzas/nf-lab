@@ -2,8 +2,8 @@
 """labctl: the adapter's CLI client, run as a wet task's script (executor shape B).
 
 `labctl run --wait` submits the job (for a key already in the ledger the adapter
-returns the existing job, so this is also the lookup), polls its status, releases
-the device when it is done, prints the final job as JSON and exits with:
+returns the existing job, so this is also the lookup), polls its status, prints
+the final job as JSON and exits with:
 
     0    done
     75   failed before any liquid moved: retryable (errorStrategy retries 75 and 69)
@@ -22,8 +22,9 @@ Files in `--outdir` (default: the current dir, i.e. the task work dir):
     provenance.json  any final state: the job as the ledger has it, minus its result
     result.json      done only: the job's result
 
-They are written before the release, from the ledger: a key that is already done
-writes its stored outputs and runs nothing.
+They come from the ledger: a key that is already done writes its stored outputs
+and runs nothing. labctl never releases the device: the person who unloads the
+plate does (or the adapter's simulated operator).
 
 Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 """
@@ -165,10 +166,8 @@ def run(args: argparse.Namespace) -> int:
             if (job["state"], job["stoppable"]) != seen:
                 seen = (job["state"], job["stoppable"])
                 log(f"{job['state']}, stoppable={job['stoppable']}")
-        write_outputs(outdir, job)  # before the release: outputs leave the deck first
-        if job["state"] == "done":
-            job = client.call("POST", f"/jobs/{job['job_id']}/release")
-        else:
+        write_outputs(outdir, job)
+        if job["state"] != "done":
             log(f"{job['state']}: {job['reason']}")
         print(json.dumps(job))
         return EXIT[job["state"]]
