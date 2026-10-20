@@ -1,0 +1,71 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:  # run everything on any branch: gh workflow run CI --ref <branch>
+
+jobs:
+  test:
+    name: Unit tests and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Plugin unit tests
+        run: make test
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Adapter and labctl tests
+        working-directory: adapter
+        run: uv sync --locked && uv run pytest -q
+
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: 26.10.2
+
+      - name: Lint pipelines
+        run: validation/run.sh lint
+
+  validation:
+    name: End-to-end checks
+    # The success criteria across runs; slower, so on PRs, main and manual runs only.
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: 26.10.2  # the plugin's minimum supported version
+
+      - name: Install the plugin and the adapter
+        run: |
+          make install
+          (cd adapter && uv sync --locked)
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+      - name: Checks
+        run: validation/run.sh
+
+      - name: Check logs
+        if: failure()
+        run: tail -n 60 build/validation/*/checks.out
