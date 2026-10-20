@@ -2,10 +2,11 @@
 
 PyLabRobot is a library with no job service, so the binding runs the protocol
 in-process. One simulated robot and deck live as long as the adapter: tips, a
-source plate holding the samples, a buffer plate for controls and blanks, an
-empty destination plate. Before each job
-the deck is reset to that state (an operator's job on a real device), so in
-simulation a free robot is also a ready one (DESIGN open question 9).
+source plate holding the samples, a buffer plate for controls and blanks, a
+destination plate. A person's load (`load(plate)`) resets the deck to full
+source and buffer wells and an empty destination; an unload (`load(None)`)
+empties every well. The labware carries no plate ID: the adapter's ledger
+keeps which plate is on the deck.
 
 With `visualize=True`, PyLabRobot's browser view of the deck starts with the
 adapter (http://127.0.0.1:1337, or the next free port; the URL is logged).
@@ -58,19 +59,25 @@ class PlrSimBackend:
             await Visualizer(resource=lh, open_browser=False).setup()
         self.lh = lh
 
-    async def _ready(self):
-        """The robot with its deck reset to the loaded state."""
-        tips, src, buf, dst = self.deck
+    async def load(self, plate: str | None) -> None:
+        _, src, buf, dst = self.deck
         for w in src.children + buf.children:
-            w.tracker.set_volume(SAMPLE_UL)
+            w.tracker.set_volume(SAMPLE_UL if plate else 0)
         for w in dst.children:
             w.tracker.set_volume(0)
-        for channel in self.lh.head.values():
-            channel.clear()  # a cancelled job may have left tips on the channels
-        return self.lh, tips, src, buf, dst
+
+    async def read_result(self, job: Job) -> dict:
+        dst = self.deck[3]
+        return {
+            "plate": job.plate,
+            "wells": [{**w.model_dump(mode="json"), "volume_ul": dst.get_item(f"{w.row}{w.column}").tracker.get_used_volume()}
+                      for w in job.wells],
+        }
 
     async def run(self, job: Job, progress: Progress) -> dict:
-        lh, tips, src, buf, dst = await self._ready()
+        lh, (tips, src, buf, dst) = self.lh, self.deck
+        for channel in lh.head.values():
+            channel.clear()  # a cancelled job may have left tips on the channels
         await asyncio.sleep(self.step)  # deck check
         progress()
         # pre-flight: everything checkable before material is touched
@@ -96,11 +103,7 @@ class PlrSimBackend:
             await self._op(progress, lh.dispense(dst.get_items(batch), vols=[self.volume_ul] * len(batch)))
             await self._op(progress, lh.drop_tips(tips.get_items(batch)))
 
-        return {
-            "plate": job.plate,
-            "wells": [{**w.model_dump(mode="json"), "volume_ul": dst.get_item(i).tracker.get_used_volume()}
-                      for w, i in zip(job.wells, ids)],
-        }
+        return await self.read_result(job)
 
     @staticmethod
     def _load_deck(lh: LiquidHandler):
@@ -112,6 +115,4 @@ class PlrSimBackend:
         plate_car[1] = buf = cor_96_wellplate_360uL_Fb("buffer")
         plate_car[2] = dst = cor_96_wellplate_360uL_Fb("destination")
         lh.deck.assign_child_resource(plate_car, rails=9)
-        for w in src.children + buf.children:
-            w.tracker.set_volume(SAMPLE_UL)
         return tips, src, buf, dst

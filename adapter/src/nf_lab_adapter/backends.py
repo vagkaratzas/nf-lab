@@ -12,6 +12,12 @@ A binding is one async `run(job, progress)`:
   (always before the boundary) or from the device going silent (either side).
   Send the device a cancel only if the binding hasn't crossed the boundary yet;
   past it, never abort: a human checks the deck.
+
+Two more calls come from a person (or the simulated operator), never from a job:
+- `load(plate)`: the person put that plate on the deck and checked the deck;
+  `load(None)`: they took it off. A simulation sets its deck up here.
+- `read_result(job)`: the job's outputs as the deck shows them now. Used when a
+  person resolves a failed job as done after checking the deck.
 """
 
 import asyncio
@@ -31,6 +37,8 @@ class Progress(Protocol):
 class Backend(Protocol):
     async def setup(self) -> None: ...  # once, when the adapter starts
     async def run(self, job: Job, progress: Progress) -> dict: ...
+    async def load(self, plate: str | None) -> None: ...
+    async def read_result(self, job: Job) -> dict: ...
 
 
 class FakeBackend:
@@ -43,6 +51,12 @@ class FakeBackend:
 
     async def setup(self) -> None:
         pass
+
+    async def load(self, plate: str | None) -> None:
+        pass
+
+    async def read_result(self, job: Job) -> dict:
+        return {"wells": len(job.wells)}
 
     async def run(self, job: Job, progress: Progress) -> dict:
         script = job.protocol
@@ -63,4 +77,4 @@ class FakeBackend:
         progress()
         if script == "protocol_fail":
             raise RuntimeError("tip pickup failed mid-transfer")
-        return {"wells": len(job.wells)}
+        return await self.read_result(job)

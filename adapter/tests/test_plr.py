@@ -6,7 +6,8 @@ from test_adapter import req, wait, wells
 
 
 def adapter(ledger, step: float = 0.0) -> TestClient:
-    return TestClient(create_app(str(ledger), [Device("plr-sim-1", "liquid-handling", PlrSimBackend(step))]))
+    return TestClient(create_app(str(ledger), [Device("plr-sim-1", "liquid-handling", PlrSimBackend(step),
+                                                      simulated_operator=True)]))
 
 
 def submit(c: TestClient, key: str, protocol: str = "plate_transfer", n: int = 10) -> dict:
@@ -20,6 +21,7 @@ def test_transfer_fills_the_plate_map_wells_from_their_source(tmp_path):
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("plr-sim-1", "liquid-handling", backend)])) as c:
         plate_map = wells("A1:S1", "C1:S2", "D2:NC1:negative_control", "H12:BLK1:blank", "A12:S3")
         job = c.post("/jobs", json=req("k", "plate_transfer", plate="P7", wells=plate_map)).json()
+        c.post("/devices/plr-sim-1/load", json={"plate": "P7"})  # a person loads it: the deck fills
         job = wait(c, job["job_id"])
         assert (job["state"], job["stoppable"], job["result"]["plate"]) == ("done", False, "P7")
         moved = {f"{w['row']}{w['column']}": (w["sample"], w["volume_ul"]) for w in job["result"]["wells"]}
@@ -29,6 +31,8 @@ def test_transfer_fills_the_plate_map_wells_from_their_source(tmp_path):
         assert dst.get_item("B1").tracker.get_used_volume() == 0  # a gap stays empty
         assert src.get_item("D2").tracker.get_used_volume() == 300.0  # a control comes from the buffer plate
         assert buf.get_item("D2").tracker.get_used_volume() == 150.0
+        c.post("/devices/plr-sim-1/unload")
+        assert dst.get_item("A1").tracker.get_used_volume() == src.get_item("A2").tracker.get_used_volume() == 0
 
 
 def test_safe_stop_cancels_before_first_aspirate_and_finishes_after(tmp_path):

@@ -5,8 +5,9 @@ fails nf --protocol preflight_fail
 [[ $(sql "SELECT max(attempt) FROM jobs WHERE protocol = 'preflight_fail'") == 3 ]]
 fails nf --protocol protocol_fail
 [[ $(logged 'Re-submitted process > WET') == 0 ]]  # liquid moved: never retried
-# ...and the robot stays locked for a human; release it as they would after checking the deck
-curl -sf -X POST "$NF_LAB_ADAPTER/jobs/$(sql "SELECT job_id FROM jobs WHERE protocol = 'protocol_fail'")/release" > /dev/null
+# ...and the robot stays locked for a person, even with the simulated operator on
+[[ $(curl -sf "$NF_LAB_ADAPTER/devices" | jq -r '.[0].held.protocol') == protocol_fail ]]
+curl -sf -X POST "$NF_LAB_ADAPTER/devices/fake-1/unload" > /dev/null  # they check the deck and unload
 nf
 nf -resume
 [[ $(logged 'Cached process > WET') == 1 ]]

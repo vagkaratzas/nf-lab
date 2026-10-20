@@ -18,9 +18,10 @@ class State(StrEnum):
     failed_preflight = "failed_preflight"  # nothing consumed: retryable
     failed_in_protocol = "failed_in_protocol"  # material touched: never retried
     stopped = "stopped"  # a human stopped the device (e-stop, vendor UI)
+    voided = "voided"  # a human threw the material away: the key may run again
 
 
-FINAL = {State.done, State.failed_preflight, State.failed_in_protocol, State.stopped}
+FINAL = {State.done, State.failed_preflight, State.failed_in_protocol, State.stopped, State.voided}
 
 
 class WellType(StrEnum):
@@ -61,12 +62,12 @@ class SubmitRequest(BaseModel):
 
 class Job(SubmitRequest):
     job_id: str
-    attempt: int = Field(description="1 + number of earlier pre-flight failures for this key")
+    attempt: int = Field(description="1 + number of earlier attempts for this key (failed pre-flight or voided)")
     device_id: str
     state: State
     stoppable: bool = Field(description="True until the first liquid moves (the stop boundary)")
     stop_requested: bool = Field(description="safe_stop arrived after the stop boundary")
-    reason: str | None = Field(description="Why the job failed or stopped")
+    reason: str | None = Field(description="Why the job failed or stopped; who resolved or voided it, and why")
     result: dict | None = Field(description="Backend outputs, kept so a repeated submit can return them")
     submitted_at: datetime
     started_at: datetime | None
