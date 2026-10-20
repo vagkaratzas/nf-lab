@@ -5,7 +5,7 @@ returns the existing job, so this is also the lookup), polls its status, release
 the device when it is done, prints the final job as JSON and exits with:
 
     0    done
-    75   failed before any liquid moved: retryable (errorStrategy retries only 75)
+    75   failed before any liquid moved: retryable (errorStrategy retries 75 and 69)
     1    failed in protocol, stopped by a human, or a request was refused
     69   adapter unreachable for longer than `--grace` seconds: outcome unknown
     143  TERM (run abort) or 130 INT: safe_stop sent; the ledger keeps the outcome
@@ -14,6 +14,15 @@ the device when it is done, prints the final job as JSON and exits with:
 moved while the adapter was away. The retry resubmits the same key and the ledger
 answers: the live job if one exists, a new attempt only if every earlier one
 failed pre-flight. So nothing runs twice.
+
+Files in `--outdir` (default: the current dir, i.e. the task work dir):
+
+    labctl.log       always: every request and reply, timestamped
+    provenance.json  any final state: the job as the ledger has it, minus its result
+    result.json      done only: the job's result
+
+They are written before the release, from the ledger: a key that is already done
+writes its stored outputs and runs nothing.
 
 Stdlib only, so it runs wherever the task runs.
 """
@@ -27,6 +36,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
 
 EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1}
 
@@ -35,8 +46,16 @@ class Unreachable(Exception):
     """The adapter didn't answer for the whole grace period."""
 
 
-def log(msg: str) -> None:
-    print(f"labctl: {msg}", file=sys.stderr, flush=True)
+_logfile = None  # labctl.log, opened by run()
+
+
+def log(msg: str, quiet: bool = False) -> None:
+    """To stderr and labctl.log; quiet = labctl.log only."""
+    if not quiet:
+        print(f"labctl: {msg}", file=sys.stderr, flush=True)
+    if _logfile:
+        _logfile.write(f"{datetime.now(UTC).isoformat()} {msg}\n")
+        _logfile.flush()
 
 
 def default_key(protocol: str, version: str, samples: list[str]) -> str:
@@ -49,10 +68,22 @@ class Client:
         self.url, self.grace, self.poll = url.rstrip("/"), grace, poll
 
     def once(self, method: str, path: str, body: dict | None = None, timeout: float = 10) -> dict:
+        # shortcut: every poll reply is logged in full (~700 B), dedupe unchanged replies if multi-day runs make it big.
         data = json.dumps(body).encode() if body is not None else None
+        log(f"-> {method} {path}" + (f" {data.decode()}" if data else ""), quiet=True)
         req = urllib.request.Request(self.url + path, data, {"Content-Type": "application/json"}, method=method)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.load(r)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                reply = r.read().decode()
+                log(f"<- {r.status} {reply}", quiet=True)
+                return json.loads(reply)
+        except urllib.error.HTTPError as e:
+            e.body = e.read().decode()  # readable once; kept for the caller
+            log(f"<- {e.code} {e.body}", quiet=True)
+            raise
+        except OSError as e:
+            log(f"<- error: {e}", quiet=True)
+            raise
 
     def call(self, method: str, path: str, body: dict | None = None) -> dict:
         """Retry connection errors and 5xx for up to `grace` seconds; 4xx raise at once."""
@@ -72,7 +103,17 @@ class Client:
             time.sleep(self.poll)
 
 
+def write_outputs(outdir: Path, job: dict) -> None:
+    (outdir / "provenance.json").write_text(json.dumps({k: v for k, v in job.items() if k != "result"}, indent=2))
+    if job["state"] == "done":
+        (outdir / "result.json").write_text(json.dumps(job["result"], indent=2))
+
+
 def run(args: argparse.Namespace) -> int:
+    global _logfile
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    _logfile = open(outdir / "labctl.log", "a")
     key = args.key or default_key(args.protocol, args.protocol_version, args.samples)
     client = Client(args.adapter, args.grace, args.poll)
     job: dict | None = None
@@ -108,6 +149,7 @@ def run(args: argparse.Namespace) -> int:
             if (job["state"], job["stoppable"]) != seen:
                 seen = (job["state"], job["stoppable"])
                 log(f"{job['state']}, stoppable={job['stoppable']}")
+        write_outputs(outdir, job)  # before the release: outputs leave the deck first
         if job["state"] == "done":
             job = client.call("POST", f"/jobs/{job['job_id']}/release")
         else:
@@ -118,7 +160,7 @@ def run(args: argparse.Namespace) -> int:
         log(f"giving up: {e}; outcome unknown, a retry asks the ledger")
         return 69
     except urllib.error.HTTPError as e:
-        log(f"refused: {e.code} {e.read().decode()}")
+        log(f"refused: {e.code} {e.body}")
         return 1
 
 
@@ -135,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
     r.add_argument("--poll", type=float, default=2.0, help="seconds between status polls")
     r.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
+    r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
     return run(p.parse_args(argv))
 
 
