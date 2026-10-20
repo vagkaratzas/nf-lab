@@ -22,7 +22,8 @@ def serve(tmp_path, step: float = 0.05):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    app = create_app(str(tmp_path / "ledger.sqlite"), [Device("fake-1", "liquid-handling", FakeBackend(step))])
+    app = create_app(str(tmp_path / "ledger.sqlite"),
+                     [Device("fake-1", "liquid-handling", FakeBackend(step), simulated_operator=True)])
     server = uvicorn.Server(uvicorn.Config(app, port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -68,10 +69,10 @@ def until(url: str, key: str, check, timeout: float = 5) -> dict:
         time.sleep(0.02)
 
 
-def test_done_writes_outputs_releases_and_a_rerun_runs_nothing(tmp_path):
+def test_done_writes_outputs_and_a_rerun_runs_nothing(tmp_path):
     with serve(tmp_path) as (url, _):
         rc, job = finish(labctl(url, out=tmp_path / "w1"))
-        assert rc == 0 and job["state"] == "done" and job["released_at"]
+        assert rc == 0 and job["state"] == "done" and job["released_at"]  # by the simulated operator
         rc, again = finish(labctl(url, out=tmp_path / "w2", wells=("B1:S2", "A1:S1")))  # same key, any order
         assert rc == 0 and again["job_id"] == job["job_id"] and again["attempt"] == 1
 
@@ -83,7 +84,7 @@ def test_done_writes_outputs_releases_and_a_rerun_runs_nothing(tmp_path):
         assert [(w["row"], w["column"], w["sample"], w["type"]) for w in prov["wells"]] == [
             ("A", 1, "S1", "sample"), ("B", 1, "S2", "sample")]
     log = (tmp_path / "w1" / "labctl.log").read_text()
-    assert "-> POST /jobs {" in log and "<- 201 {" in log and f"-> POST /jobs/{job['job_id']}/release" in log
+    assert "-> POST /jobs {" in log and "<- 201 {" in log and "/release" not in log  # unloading is a person's job
     assert "<- 200 {" in (tmp_path / "w2" / "labctl.log").read_text()
 
 

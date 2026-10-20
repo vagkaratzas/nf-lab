@@ -1,5 +1,5 @@
 # Criterion: aborting the run safe-stops wet tasks; before the boundary nothing is consumed.
-NF_LAB_STEP=2 start_adapter
+NF_LAB_STEP=1 start_adapter
 nf_bg --plates 2
 until_sql "SELECT count(*) = 1 FROM jobs WHERE state = 'preflight'"
 kill -TERM $NF_PID  # what a dry-task failure or a scheduler kill does: Nextflow aborts the run

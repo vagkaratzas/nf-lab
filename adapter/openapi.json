@@ -106,7 +106,7 @@
     "/lookup/{idempotency_key}": {
       "get": {
         "summary": "Lookup",
-        "description": "Find a job after a head restart: the live job for the key, else its latest pre-flight failure.",
+        "description": "Find a job after a head restart: the live job for the key, else its latest attempt.",
         "operationId": "lookup",
         "parameters": [
           {
@@ -192,7 +192,7 @@
     "/jobs/{job_id}/release": {
       "post": {
         "summary": "Release",
-        "description": "Unlock the device once outputs are collected. Idempotent.",
+        "description": "The finished plate is off the deck: unlock the device. Called by the person who unloads it. Idempotent.",
         "operationId": "release",
         "parameters": [
           {
@@ -299,7 +299,7 @@
           "attempt": {
             "type": "integer",
             "title": "Attempt",
-            "description": "1 + number of earlier pre-flight failures for this key"
+            "description": "1 + number of earlier attempts for this key (failed pre-flight or voided)"
           },
           "device_id": {
             "type": "string",
@@ -328,7 +328,7 @@
               }
             ],
             "title": "Reason",
-            "description": "Why the job failed or stopped"
+            "description": "Why the job failed or stopped; who resolved or voided it, and why"
           },
           "result": {
             "anyOf": [
@@ -431,7 +431,8 @@
           "done",
           "failed_preflight",
           "failed_in_protocol",
-          "stopped"
+          "stopped",
+          "voided"
         ],
         "title": "State"
       },

@@ -1,11 +1,14 @@
 """SQLite job ledger: every idempotency key the adapter accepted, and its outcome.
 
 At-most-once: the partial UNIQUE index allows at most one job per key that is
-not a pre-flight failure. A key can only get a new attempt while every earlier
-attempt failed before any liquid moved.
+not a pre-flight failure or voided. A key can only get a new attempt while every
+earlier attempt failed before any liquid moved, or a human voided it.
 
 Device lock: derived from the ledger, so it survives restarts. A device is
 locked while one of its jobs has started and is not yet released.
+
+Decks: the plate a person loaded on each device, also kept here. A device runs
+a queued job only when it is free and holds the job's plate (free is not ready).
 """
 
 import json
@@ -13,7 +16,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
-from .contract import FINAL, Job, State, SubmitRequest
+from .contract import FINAL, Job, SubmitRequest
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -38,8 +41,16 @@ CREATE TABLE IF NOT EXISTS jobs (
     device_heartbeat_at TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_live_job_per_key
-    ON jobs(idempotency_key) WHERE state != 'failed_preflight';
+    ON jobs(idempotency_key) WHERE state NOT IN ('failed_preflight', 'voided');
+CREATE TABLE IF NOT EXISTS decks (
+    device_id TEXT PRIMARY KEY,
+    plate TEXT UNIQUE,  -- NULL: empty deck. UNIQUE: a plate is on one device at most
+    loaded_at TEXT,
+    loaded_by TEXT
+);
+PRAGMA user_version = 2;
 """
+VERSION = 2  # bump with any SCHEMA change
 
 PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
 
@@ -57,10 +68,12 @@ class Ledger:
         # one connection, used only from the event loop thread; a pool if that changes.
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA)
-        if "wells" not in {c["name"] for c in self.db.execute("PRAGMA table_info(jobs)")}:
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'jobs'").fetchone():
+            self.db.executescript(SCHEMA)
+        elif (v := self.db.execute("PRAGMA user_version").fetchone()[0]) != VERSION:
             # shortcut: no migrations while the contract is a prototype; add them once ledgers hold real runs.
-            raise RuntimeError(f"{path} predates the plate map (sample_ids column): delete it or point NF_LAB_LEDGER elsewhere")
+            raise RuntimeError(f"{path} is ledger version {v}, this adapter needs {VERSION}:"
+                               " delete it or point NF_LAB_LEDGER elsewhere")
         self._recover()
 
     def _recover(self) -> None:
@@ -89,11 +102,11 @@ class Ledger:
         return self._job(self.db.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone())
 
     def lookup(self, key: str) -> Job | None:
-        """The live job for a key, else its latest pre-flight failure."""
+        """The live job for a key, else its latest attempt (failed pre-flight or voided)."""
         return self._job(
             self.db.execute(
                 """SELECT * FROM jobs WHERE idempotency_key = ?
-                   ORDER BY state != 'failed_preflight' DESC, attempt DESC LIMIT 1""",
+                   ORDER BY state NOT IN ('failed_preflight', 'voided') DESC, attempt DESC LIMIT 1""",
                 (key,),
             ).fetchone()
         )
@@ -121,26 +134,57 @@ class Ledger:
                 return earlier, False
         return self.get(job_id), True
 
-    def next_runnable(self, device_id: str) -> Job | None:
-        """Oldest queued job for the device, or None while the device is locked.
+    def held(self, device_id: str) -> Job | None:
+        """The job locking the device: started and not released.
 
-        Locked = a job has started and isn't released. A pre-flight failure never
-        locks: nothing was touched and no outputs wait on the deck, so its retry
-        (same key) and other jobs can start without a release.
+        A pre-flight failure never locks: nothing was touched and no outputs wait
+        on the deck, so its retry (same key) and other jobs can start without a release.
         """
-        locked = self.db.execute(
-            "SELECT 1 FROM jobs WHERE device_id = ? AND started_at IS NOT NULL AND released_at IS NULL"
+        return self._job(self.db.execute(
+            "SELECT * FROM jobs WHERE device_id = ? AND started_at IS NOT NULL AND released_at IS NULL"
             " AND state != 'failed_preflight'",
             (device_id,),
-        ).fetchone()
-        if locked:
+        ).fetchone())
+
+    def queued(self, device_id: str) -> list[Job]:
+        rows = self.db.execute("SELECT * FROM jobs WHERE device_id = ? AND state = 'queued' ORDER BY rowid", (device_id,))
+        return [self._job(r) for r in rows]
+
+    def next_runnable(self, device_id: str) -> Job | None:
+        """Oldest queued job for the plate on the device's deck; None while the device is locked."""
+        if self.held(device_id):
             return None
-        return self._job(
-            self.db.execute(
-                "SELECT * FROM jobs WHERE device_id = ? AND state = 'queued' ORDER BY rowid LIMIT 1",
-                (device_id,),
-            ).fetchone()
+        plate = self.plate(device_id)
+        return next((j for j in self.queued(device_id) if j.plate == plate), None)
+
+    def plate(self, device_id: str) -> str | None:
+        row = self.db.execute("SELECT plate FROM decks WHERE device_id = ?", (device_id,)).fetchone()
+        return row["plate"] if row else None
+
+    def where(self, plate: str) -> str | None:
+        """The device holding the plate, if any."""
+        row = self.db.execute("SELECT device_id FROM decks WHERE plate = ?", (plate,)).fetchone()
+        return row["device_id"] if row else None
+
+    def set_plate(self, device_id: str, plate: str | None, by: str) -> None:
+        """Record what a person put on the deck; None: they emptied it."""
+        self.db.execute(
+            """INSERT INTO decks (device_id, plate, loaded_at, loaded_by) VALUES (?, ?, ?, ?)
+               ON CONFLICT (device_id) DO UPDATE SET plate = excluded.plate,
+                   loaded_at = excluded.loaded_at, loaded_by = excluded.loaded_by""",
+            (device_id, plate, now(), by),
         )
+
+    def unload(self, device_id: str, by: str) -> None:
+        """The plate is off the deck: release the job holding the device, if any, and empty the deck."""
+        with self.db:  # one transaction: a released job never leaves its plate recorded on the deck
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute(
+                "UPDATE jobs SET released_at = ? WHERE device_id = ? AND started_at IS NOT NULL"
+                " AND released_at IS NULL AND state != 'failed_preflight'",
+                (now(), device_id),
+            )
+            self.set_plate(device_id, None, by)
 
     def update(self, job_id: str, **fields) -> Job:
         if "result" in fields:

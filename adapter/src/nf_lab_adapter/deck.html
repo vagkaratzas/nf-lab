@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck controls</title>
+<style>
+  :root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --card: #f5f5f7;
+          --ok: #1a7f37; --warn: #9a6700; --bad: #c62828; --btn: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #3a3a3c; --card: #2c2c2e;
+            --ok: #4ac26b; --warn: #d29922; --bad: #ff6b6b; --btn: #3a3a3c; }
+  }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .muted { color: var(--muted); }
+  .device { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .device h2 { font-size: 16px; margin: 0 0 4px; }
+  .status { font-weight: 600; margin: 6px 0; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  button, input { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--btn); color: var(--fg); }
+  button { cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  input { min-width: 0; width: 9em; }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  code { font-size: 13px; }
+  #error { color: var(--bad); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Deck controls</h1>
+  <span class="muted">what a person does at each robot</span>
+  <label class="muted">I am <input id="by" value="operator" aria-label="Operator name"></label>
+</header>
+<div id="error" role="alert"></div>
+<main id="devices"><p class="muted">Loading…</p></main>
+<script>
+const FINAL = ["done", "failed_preflight", "failed_in_protocol", "stopped", "voided"];
+const by = document.getElementById("by");
+try { by.value = localStorage.getItem("deck.by") || by.value; } catch (e) {}
+by.onchange = () => { try { localStorage.setItem("deck.by", by.value); } catch (e) {} };
+
+async function call(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ by: by.value || "operator", ...body }) });
+  document.getElementById("error").textContent = r.ok ? "" : (await r.json()).detail;
+  refresh();
+}
+
+function status(d) {
+  const h = d.held;
+  if (h && !FINAL.includes(h.state))
+    return ["ok", `Running ${h.protocol} on plate ${h.plate} (${h.state}${h.stoppable ? "" : ", liquid moved"})`];
+  if (h && h.state === "done") return ["warn", `Done with plate ${h.plate}: unload it`];
+  if (h) return ["bad", `${h.state} on plate ${h.plate}: check the deck, resolve, then unload. ${h.reason || ""}`];
+  if (d.plate) return ["ok", `Ready for plate ${d.plate}`];
+  return ["muted", "Empty deck: load a plate"];
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function render(devices) {
+  const main = document.getElementById("devices");
+  const typing = document.activeElement && main.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+  if (typing) return;  // don't wipe what someone is typing
+  main.innerHTML = devices.map(d => {
+    const [cls, text] = status(d), h = d.held, id = esc(d.device_id);
+    const running = h && !FINAL.includes(h.state), failed = h && ["failed_in_protocol", "stopped"].includes(h.state);
+    const waiting = [...new Set(d.queued.map(j => j.plate))];
+    return `<section class="device">
+      <h2>${id} <span class="muted">· ${esc(d.capability)}${d.simulated_operator ? " · simulated operator" : ""}</span></h2>
+      <div class="status ${cls}">${esc(text)}</div>
+      <div class="muted">On the deck: ${d.plate ? `plate <b>${esc(d.plate)}</b>` : "nothing"}</div>
+      ${d.queued.length ? `<div class="muted">Queued:</div><ul>${d.queued.map(j =>
+        `<li><code>${esc(j.protocol)}</code> plate <b>${esc(j.plate)}</b>, ${j.wells.length} wells${j.plate === d.plate ? "" : " (waiting for its plate)"}</li>`).join("")}</ul>` : ""}
+      <div class="row">
+        <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(waiting.find(p => p !== d.plate) || "")}">
+        <datalist id="plates-${id}">${waiting.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
+        <button ${h ? "disabled" : ""} onclick="call('devices/${id}/load', {plate: document.getElementById('plate-${id}').value})">Load plate + confirm deck</button>
+        <button ${running || !d.plate ? "disabled" : ""} onclick="call('devices/${id}/unload')">Unload</button>
+        <button class="stop" ${running ? "" : "disabled"} onclick="call('devices/${id}/estop')">E-stop</button>
+      </div>
+      ${failed ? `<div class="row">
+        <input id="note-${id}" placeholder="what the deck shows" aria-label="Note">
+        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'done', note: document.getElementById('note-${id}').value})">Resolve as done</button>
+        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'void', note: document.getElementById('note-${id}').value})">Void (run again)</button>
+      </div>` : ""}
+    </section>`;
+  }).join("") || `<p class="muted">No devices.</p>`;
+}
+
+async function refresh() {
+  try { render(await (await fetch("devices")).json()); }
+  catch (e) { document.getElementById("error").textContent = "adapter unreachable"; }
+}
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

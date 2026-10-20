@@ -5,14 +5,16 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from nf_lab_adapter.app import Device, create_app
+from nf_lab_adapter.app import Device, contract_spec, create_app
 from nf_lab_adapter.backends import FakeBackend
 
-FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped"}
+FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped", "voided"}
 
 
-def adapter(ledger: Path, step: float = 0.05, silent_after: float = 600) -> TestClient:
-    return TestClient(create_app(str(ledger), [Device("fake-1", "liquid-handling", FakeBackend(step), silent_after)]))
+def adapter(ledger: Path, step: float = 0.05, silent_after: float = 600, operator: bool = True) -> TestClient:
+    """operator: the simulated operator unloads done plates and loads queued ones; off = a person does."""
+    return TestClient(create_app(str(ledger), [Device("fake-1", "liquid-handling", FakeBackend(step), silent_after,
+                                                      simulated_operator=operator)]))
 
 
 def wells(*tokens: str) -> list[dict]:
@@ -40,7 +42,7 @@ def wait(c: TestClient, job_id: str, until=lambda j: j["state"] in FINAL, timeou
 
 
 def run(c: TestClient, key: str, protocol: str = "ok") -> dict:
-    """Submit, wait for a final state, release the device."""
+    """Submit, wait for a final state, release the device (a no-op once the simulated operator has)."""
     job = wait(c, c.post("/jobs", json=req(key, protocol)).json()["job_id"])
     c.post(f"/jobs/{job['job_id']}/release")
     return job
@@ -70,29 +72,32 @@ def test_plate_map_is_validated(tmp_path):
         assert [(w["row"], w["column"]) for w in stored.json()["wells"]] == [("A", 2), ("C", 6), ("H", 12)]
 
 
-def test_a_ledger_from_before_the_plate_map_is_refused(tmp_path):
+def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
     import sqlite3
     from nf_lab_adapter.ledger import SCHEMA
-    old = SCHEMA.replace("plate TEXT NOT NULL,\n    wells TEXT NOT NULL,", "sample_ids TEXT NOT NULL,")
-    assert "sample_ids" in old
-    sqlite3.connect(tmp_path / "old.sqlite").executescript(old)
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 2", "user_version = 1"))
     try:
         create_app(str(tmp_path / "old.sqlite"), [])
     except RuntimeError as e:
-        assert "predates the plate map" in str(e)
+        assert "ledger version 1, this adapter needs 2" in str(e)
     else:
         raise AssertionError("old ledger accepted")
 
 
 def test_two_jobs_on_one_device_run_serially(tmp_path):
-    with adapter(tmp_path / "ledger.sqlite") as c:
+    with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
         a = c.post("/jobs", json=req("a")).json()
         b = c.post("/jobs", json=req("b")).json()
+        load(c, "P1")
         a = wait(c, a["job_id"])
         time.sleep(0.2)
-        assert c.get(f"/jobs/{b['job_id']}").json()["state"] == "queued"  # locked until release
+        assert c.get(f"/jobs/{b['job_id']}").json()["state"] == "queued"  # locked until unloaded
 
-        c.post(f"/jobs/{a['job_id']}/release")
+        c.post(f"/jobs/{a['job_id']}/release")  # the contract's release is the unload
+        assert c.get("/devices").json()[0]["plate"] is None
+        time.sleep(0.2)
+        assert c.get(f"/jobs/{b['job_id']}").json()["state"] == "queued"  # free is not ready
+        load(c, "P1")
         b = wait(c, b["job_id"])
         assert datetime.fromisoformat(b["started_at"]) > datetime.fromisoformat(a["finished_at"])
 
@@ -172,5 +177,113 @@ def test_silent_device_fails_and_frees_the_worker(tmp_path):
 
 def test_committed_openapi_matches_the_app():
     committed = json.loads((Path(__file__).parents[1] / "openapi.json").read_text())
-    assert committed == json.loads(json.dumps(create_app(":memory:", []).openapi())), \
+    assert committed == json.loads(json.dumps(contract_spec(create_app(":memory:", [])))), \
         "regenerate: uv run python -m nf_lab_adapter.app > openapi.json"
+
+
+# --- operator API: what a person does at the deck ---
+
+def load(c: TestClient, plate: str, device: str = "fake-1"):
+    return c.post(f"/devices/{device}/load", json={"plate": plate, "by": "ana"})
+
+
+def test_a_job_runs_only_on_a_deck_holding_its_plate(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
+        p2 = c.post("/jobs", json=req("p2", plate="P2")).json()
+        p1 = c.post("/jobs", json=req("p1")).json()
+        time.sleep(0.2)
+        assert c.get(f"/jobs/{p2['job_id']}").json()["state"] == "queued"  # empty deck: nothing runs
+        assert load(c, "P1").json()["plate"] == "P1"
+        assert wait(c, p1["job_id"])["state"] == "done"  # P1's job jumps the queue: its plate is loaded
+        assert c.get(f"/jobs/{p2['job_id']}").json()["state"] == "queued"
+
+        view = c.get("/devices").json()[0]
+        assert (view["plate"], view["held"]["job_id"], [j["plate"] for j in view["queued"]]) == ("P1", p1["job_id"], ["P2"])
+        assert load(c, "P2").status_code == 409  # P1 still on the deck
+        assert c.post("/devices/fake-1/unload", json={"by": "ana"}).json()["held"] is None
+        assert c.get(f"/jobs/{p1['job_id']}").json()["released_at"]
+        load(c, "P2")
+        assert wait(c, p2["job_id"])["state"] == "done"
+
+
+def test_a_plate_is_on_one_device_at_most(tmp_path):
+    devices = [Device(f"fake-{i}", f"cap-{i}", FakeBackend(0.05)) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        assert load(c, "P1", "fake-1").status_code == 200
+        r = load(c, "P1", "fake-2")
+        assert r.status_code == 409 and "plate P1 is on fake-1" in r.json()["detail"]
+        assert load(c, "P1", "fake-1").status_code == 200  # loading it again where it is: fine
+        assert load(c, "P1", "nope").status_code == 404
+
+
+def test_unload_and_load_wait_for_a_running_job(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite", step=0.3, operator=False) as c:
+        load(c, "P1")
+        job = c.post("/jobs", json=req("k")).json()
+        wait(c, job["job_id"], lambda j: j["state"] == "running")
+        assert c.post("/devices/fake-1/unload").status_code == 409
+        assert load(c, "P1").status_code == 409
+        assert c.post("/devices/fake-1/estop").status_code == 200
+
+
+def test_estop_stops_at_once_and_keeps_the_lock(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite", step=0.3) as c:
+        assert c.post("/devices/fake-1/estop").status_code == 409  # nothing running
+        for key, past_boundary in [("before", False), ("after", True)]:
+            job = c.post("/jobs", json=req(key)).json()
+            wait(c, job["job_id"], lambda j: j["state"] == "running" and j["stoppable"] != past_boundary)
+            c.post("/devices/fake-1/estop", json={"by": "ana"})
+            job = wait(c, job["job_id"])
+            assert (job["state"], job["reason"]) == ("stopped", "e-stop pressed by ana")
+            assert c.get("/devices").json()[0]["held"]["job_id"] == job["job_id"]  # the operator leaves it for a person
+            c.post("/devices/fake-1/unload")
+
+
+def test_resolve_as_done_reads_the_deck_and_the_retry_collects_it(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        job = run(c, "x", "protocol_fail")  # run() unloads it: resolving as done now can't read the deck
+        r = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "done"})
+        assert r.status_code == 409 and "void the job instead" in r.json()["detail"]
+
+        job = wait(c, c.post("/jobs", json=req("y", "protocol_fail")).json()["job_id"])
+        assert c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "maybe"}).status_code == 422
+        done = c.post(f"/jobs/{job['job_id']}/resolve",
+                      json={"outcome": "done", "by": "ana", "note": "all wells filled"}).json()
+        assert (done["state"], done["result"], done["finished_at"]) == ("done", {"wells": 2}, job["finished_at"])
+        assert done["reason"] == "resolved as done by ana: all wells filled; was failed_in_protocol: " \
+                                 "RuntimeError: tip pickup failed mid-transfer"
+        assert c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void"}).status_code == 409  # only failed jobs
+        again = c.post("/jobs", json=req("y", "protocol_fail"))  # the task's retry or -resume: same key
+        assert again.status_code == 200 and again.json()["job_id"] == job["job_id"]
+        assert wait(c, job["job_id"], lambda j: j["released_at"])  # done: the simulated operator unloads it
+
+
+def test_void_lets_the_key_run_again(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        job = run(c, "z", "protocol_fail")
+        assert c.post("/jobs", json=req("z", "protocol_fail")).json()["job_id"] == job["job_id"]  # at-most-once
+        void = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void", "by": "ana", "note": "binned"}).json()
+        assert void["state"] == "voided" and void["reason"].startswith("voided by ana: binned; was failed_in_protocol")
+        assert c.get("/lookup/z").json()["job_id"] == job["job_id"]
+        retry = c.post("/jobs", json=req("z", "protocol_fail"))
+        assert retry.status_code == 201 and retry.json()["attempt"] == 2
+        assert c.get("/lookup/z").json()["job_id"] == retry.json()["job_id"]  # the live attempt wins
+
+
+def test_simulated_operator_unloads_done_plates_and_loads_queued_ones(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        a = c.post("/jobs", json=req("a")).json()
+        b = c.post("/jobs", json=req("b", plate="P2")).json()
+        a, b = wait(c, a["job_id"]), wait(c, b["job_id"])
+        assert a["state"] == b["state"] == "done" and a["released_at"] and b["released_at"]
+        assert datetime.fromisoformat(b["started_at"]) > datetime.fromisoformat(a["released_at"])
+        assert c.get("/devices").json()[0]["plate"] is None  # the last plate is unloaded too
+
+
+def test_deck_page_is_served_and_the_operator_api_stays_out_of_the_contract(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        page = c.get("/deck")
+        assert page.status_code == 200 and "Deck controls" in page.text
+    spec = json.loads((Path(__file__).parents[1] / "openapi.json").read_text())
+    assert set(spec["paths"]) == {"/jobs", "/jobs/{job_id}", "/lookup/{idempotency_key}",
+                                  "/jobs/{job_id}/safe_stop", "/jobs/{job_id}/release"}
