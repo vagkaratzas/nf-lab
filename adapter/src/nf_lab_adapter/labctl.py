@@ -51,12 +51,17 @@ _logfile = None  # labctl.log, opened by run()
 
 
 def log(msg: str, quiet: bool = False) -> None:
-    """To stderr and labctl.log; quiet = labctl.log only."""
-    if not quiet:
-        print(f"labctl: {msg}", file=sys.stderr, flush=True)
+    """To labctl.log and stderr; quiet = labctl.log only."""
     if _logfile:
         _logfile.write(f"{datetime.now(timezone.utc).isoformat()} {msg}\n")
         _logfile.flush()
+    if not quiet:
+        try:
+            print(f"labctl: {msg}", file=sys.stderr, flush=True)
+        except OSError:
+            # stderr's reader is gone: on abort the wrapper TERMs its `tee .command.err` too.
+            # Carry on without stderr, or the safe_stop never goes out.
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stderr.fileno())
 
 
 def default_key(protocol: str, version: str, samples: list[str]) -> str:

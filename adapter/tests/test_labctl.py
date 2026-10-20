@@ -106,6 +106,18 @@ def test_term_safe_stops_before_the_boundary(tmp_path):
         assert job["reason"] == "safe_stop"
 
 
+def test_term_safe_stops_when_stderr_is_gone(tmp_path):
+    # On abort the wrapper TERMs the whole task tree, `tee .command.err` included.
+    with serve(tmp_path, step=1) as (url, _):
+        p = labctl(url, key="k", out=tmp_path / "w")
+        p.stderr.close()  # no reader: every write to stderr now fails (EPIPE)
+        until(url, "k", lambda j: j["state"] == "preflight")
+        p.send_signal(signal.SIGTERM)
+        assert p.wait(timeout=10) == 143
+        assert "/safe_stop" in (tmp_path / "w" / "labctl.log").read_text()
+        assert until(url, "k", lambda j: j["state"] == "failed_preflight")["reason"] == "safe_stop"
+
+
 def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
     with socket.socket() as s:  # a port nobody listens on
         s.bind(("127.0.0.1", 0))
