@@ -1,5 +1,5 @@
 # Criterion: past the boundary the abort leaves the running job to finish; -resume collects it.
-NF_LAB_STEP=2 start_adapter
+NF_LAB_STEP=1 start_adapter
 nf_bg --plates 2
 until_sql "SELECT count(*) = 1 FROM jobs WHERE stoppable = 0"
 kill -TERM $NF_PID
