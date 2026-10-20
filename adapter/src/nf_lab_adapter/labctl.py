@@ -7,11 +7,13 @@ the device when it is done, prints the final job as JSON and exits with:
     0    done
     75   failed before any liquid moved: retryable (errorStrategy retries only 75)
     1    failed in protocol, stopped by a human, or a request was refused
+    69   adapter unreachable for longer than `--grace` seconds: outcome unknown
     143  TERM (run abort) or 130 INT: safe_stop sent; the ledger keeps the outcome
 
-An unreachable adapter is absorbed for `--grace` seconds. After that, labctl exits
-75 if the job was still stoppable when last seen (a retry resubmits the same key
-and the ledger returns the live job), else 1: past the stop boundary a human looks.
+69 is retried like 75 but means something else: labctl can't tell whether liquid
+moved while the adapter was away. The retry resubmits the same key and the ledger
+answers: the live job if one exists, a new attempt only if every earlier one
+failed pre-flight. So nothing runs twice.
 
 Stdlib only, so it runs wherever the task runs.
 """
@@ -113,9 +115,8 @@ def run(args: argparse.Namespace) -> int:
         print(json.dumps(job))
         return EXIT[job["state"]]
     except Unreachable as e:
-        stoppable = job is None or job["stoppable"]
-        log(f"giving up: {e}; last seen {'before' if stoppable else 'past'} the stop boundary")
-        return 75 if stoppable else 1
+        log(f"giving up: {e}; outcome unknown, a retry asks the ledger")
+        return 69
     except urllib.error.HTTPError as e:
         log(f"refused: {e.code} {e.read().decode()}")
         return 1

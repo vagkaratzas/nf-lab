@@ -90,15 +90,17 @@ def test_term_safe_stops_before_the_boundary(tmp_path):
         assert job["reason"] == "safe_stop"
 
 
-def test_unreachable_adapter_exit_depends_on_the_boundary(tmp_path):
+def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
     with socket.socket() as s:  # a port nobody listens on
         s.bind(("127.0.0.1", 0))
         dead = f"http://127.0.0.1:{s.getsockname()[1]}"
-    assert finish(labctl(dead, grace=0.3))[0] == 75  # never submitted: retry is safe
+    assert finish(labctl(dead, grace=0.3))[0] == 69  # never submitted
 
     with serve(tmp_path) as (url, stop):
         p = labctl(url, "silent", key="k", grace=0.3)  # 'silent' hangs past the boundary
-        while "stoppable=False" not in p.stderr.readline():  # labctl itself saw the crossing
+        while "stoppable=False" not in p.stderr.readline():
             pass
         stop()
-        assert finish(p)[0] == 1  # liquid moved: never retry
+        assert finish(p)[0] == 69  # labctl can't know what happened meanwhile
+    with serve(tmp_path) as (url, _):  # same ledger: the restart failed the job in protocol
+        assert finish(labctl(url, "silent", key="k"))[0] == 1  # the retry gets the truth
