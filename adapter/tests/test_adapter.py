@@ -92,6 +92,19 @@ def test_fake_plate_transfer_returns_the_plr_result_shape(tmp_path):
             {"row": "B", "column": 1, "sample": "S2", "type": "sample", "volume_ul": 150.0}]}
 
 
+def test_request_log_records_contract_calls_and_operator_actions(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
+        job = c.post("/jobs", json=req("a")).json()
+        c.get(f"/jobs/{job['job_id']}")
+        c.get("/devices")  # the dashboard's own polls stay out
+        load(c, "P1")
+    log = [json.loads(line) for line in (tmp_path / "ledger.requests.jsonl").read_text().splitlines()]
+    assert [(e["method"], e["path"], e["status"], e.get("location")) for e in log] == [
+        ("POST", "/jobs", 201, f"/jobs/{job['job_id']}"),
+        ("GET", f"/jobs/{job['job_id']}", 200, None),
+        ("POST", "/devices/fake-1/load", 200, None)]
+
+
 def test_two_jobs_on_one_device_run_serially(tmp_path):
     with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
         a = c.post("/jobs", json=req("a")).json()

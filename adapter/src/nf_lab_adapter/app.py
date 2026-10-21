@@ -299,6 +299,22 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 
     app = FastAPI(title="nf-lab device adapter", version="0.1.0", lifespan=lifespan)
 
+    # Request log for the dashboard: the contract calls and operator actions, one JSON line each.
+    # shortcut: never rotated; fine for demo runs, rotate if the adapter runs for weeks.
+    request_log = None if ledger_path == ":memory:" else Path(ledger_path).with_suffix(".requests.jsonl")
+
+    @app.middleware("http")
+    async def log_request(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if request_log and (request.method != "GET" or path.startswith(("/jobs/", "/lookup/"))):
+            entry = {"t": now(), "method": request.method, "path": path, "status": response.status_code}
+            if loc := response.headers.get("location"):
+                entry["location"] = loc  # the job a submit created or found
+            with request_log.open("a") as f:
+                f.write(json.dumps(entry) + "\n")
+        return response
+
     @app.exception_handler(Conflict)
     async def conflict(_: Request, e: Conflict) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=409)
@@ -334,6 +350,7 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
             adapter.wake_pool(req.capability)
         else:
             response.status_code = 200
+        response.headers["Location"] = f"/jobs/{job.job_id}"
         return job
 
     @app.get("/jobs/{job_id}", operation_id="status", response_model=Job, responses={404: {}})
