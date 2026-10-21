@@ -120,12 +120,12 @@ env.NF_LAB_ADAPTER = env('NF_LAB_ADAPTER') ?: 'http://127.0.0.1:8000'
 process {
     withLabel: 'process_wet' {
         executor = 'lab'
-        errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'terminate' }
+        errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }
     }
 }
 ```
 
-`labctl` exits with `0` when the job is done and with `75` when it failed before any liquid moved, which is safe to retry. `69` means the adapter couldn't be reached, so the outcome is unknown: the retry asks the ledger with the same key, so nothing runs twice. `1` covers every other failure, which needs a person. Aborting the run (Ctrl-C) stops a job safely if no liquid has moved yet, and otherwise lets it finish.
+`labctl` exits with `0` when the job is done and with `75` when it failed before any liquid moved, which is safe to retry. `69` means the adapter couldn't be reached, so the outcome is unknown: the retry asks the ledger with the same key, so nothing runs twice. `1` covers every other failure, which needs a person. `finish`, not `terminate`, ends the run after a failure without stopping the other robots: a job already running completes its plate, and nothing new starts. Set `errorStrategy = 'finish'` for the dry processes too, so a software error doesn't stop the robots either. Aborting the run (Ctrl-C) stops a job safely if no liquid has moved yet, and otherwise lets it finish.
 
 ## The contract
 
