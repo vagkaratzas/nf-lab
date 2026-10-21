@@ -1,0 +1,22 @@
+[project]
+name = "nf-lab-dashboard"
+version = "0.1.0"
+description = "Live view of a lab run: Nextflow tasks, adapter calls, ledger jobs and robots"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.146.0",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.14.0",
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nf_lab_dashboard"

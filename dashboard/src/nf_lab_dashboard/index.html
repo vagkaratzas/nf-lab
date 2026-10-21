@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nf-lab live</title>
+<style>
+  :root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --card: #f5f5f7;
+          --ok: #1a7f37; --warn: #9a6700; --bad: #c62828; --info: #0b62c4; --flash: #fff3b0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #3a3a3c; --card: #2c2c2e;
+            --ok: #4ac26b; --warn: #d29922; --bad: #ff6b6b; --info: #6cb6ff; --flash: #5a4a00; }
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 12px 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 10px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; }
+  h2 small { font-weight: normal; color: var(--muted); }
+  .muted { color: var(--muted); }
+  main { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(300px, 0.9fr);
+         grid-template-areas: "nf adapter ledger deck" "robots robots robots deck"; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  #nf { grid-area: nf; } #adapter { grid-area: adapter; } #ledger { grid-area: ledger; }
+  #robots { grid-area: robots; } #deck { grid-area: deck; display: flex; flex-direction: column; }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "nf" "adapter" "ledger" "robots" "deck"; }
+  }
+  .scroll { max-height: 40vh; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  td.wrap { white-space: normal; }
+  code { font-size: 12px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .info { color: var(--info); }
+  tr.flash td { background: var(--flash); transition: background 0s; }
+  tr td { transition: background 1.5s; }
+  .robots { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .robot { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .robot h3 { margin: 0 0 4px; font-size: 14px; }
+  .viewer { height: 320px; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); margin-top: 6px; }
+  .viewer iframe { width: 200%; height: 640px; border: 0; transform: scale(.5); transform-origin: 0 0; }
+  #deck iframe { flex: 1; min-height: 70vh; width: 100%; border: 0; border-radius: 6px; background: var(--bg); }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>nf-lab live</h1>
+  <span id="run" class="muted"></span>
+  <span id="where" class="muted"></span>
+</header>
+<main>
+  <section id="nf"><h2>1 · Nextflow <small>tasks from .nextflow.log</small></h2><div class="scroll" id="nf-body"></div></section>
+  <section id="adapter"><h2>2 · Adapter <small>calls it received</small></h2><div class="scroll" id="adapter-body"></div></section>
+  <section id="ledger"><h2>3 · Ledger <small>jobs, newest first</small></h2><div class="scroll" id="ledger-body"></div></section>
+  <section id="robots"><h2>4 · Robots <small>status, lock, heartbeat, deck view</small></h2><div id="robots-body" class="robots"></div></section>
+  <section id="deck"><h2>Deck controls <small>what a person does</small></h2></section>
+</main>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const CLS = { done: "ok", cached: "info", submitted: "warn", running: "warn", queued: "muted", preflight: "warn",
+              failed_preflight: "warn", failed_in_protocol: "bad", stopped: "bad", voided: "muted",
+              ready: "ok", empty: "muted", unload: "warn", needs_person: "bad", finished: "ok", aborted: "bad" };
+const cls = s => CLS[s] || (String(s).startsWith("exit") ? "bad" : "");
+const table = (head, rows) => rows.length
+  ? `<table><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>${rows.join("")}</table>` : `<p class="muted">Nothing yet.</p>`;
+const get = async path => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`); return r.json(); };
+
+function nextflow(run) {
+  if (run.error) return `<p class="muted">${esc(run.error)}</p>`;
+  document.getElementById("run").innerHTML =
+    `run <b>${esc(run.run_name || "?")}</b> · <span class="${cls(run.state)}">${esc(run.state)}</span>`;
+  return table(["Task", "State", "Tries", "Hash", "At"], run.tasks.map(t =>
+    `<tr><td>${esc(t.name)}</td><td class="${cls(t.state)}">${esc(t.state)}</td><td>${t.attempts || ""}</td>
+     <td><code>${esc(t.hash)}</code></td><td>${esc(t.time)}</td></tr>`));
+}
+
+function adapter(calls) {
+  return table(["At", "Call", "For", "HTTP"], calls.map(c =>
+    `<tr><td>${esc(c.time)}</td><td><code>${esc(c.op)}</code>${c.count > 1 ? ` <span class="muted">×${c.count}</span>` : ""}</td>
+     <td>${esc(c.who)}</td><td class="${c.http >= 400 ? "bad" : ""}">${c.http}</td></tr>`));
+}
+
+const seen = {};  // job_id -> last state, to flash rows that changed
+function ledger(jobs) {
+  const html = table(["Plate", "Robot", "State", "Try", "Liquid", "Reason"], jobs.map(j => {
+    const changed = seen[j.job_id] !== undefined && seen[j.job_id] !== j.state + j.stoppable + !!j.released_at;
+    seen[j.job_id] = j.state + j.stoppable + !!j.released_at;
+    const state = j.state + (j.state === "done" && !j.released_at ? " (on deck)" : "");
+    return `<tr class="${changed ? "flash" : ""}"><td><b>${esc(j.plate)}</b></td><td>${esc(j.device_id || "pool")}</td>
+      <td class="${cls(j.state)}">${esc(state)}</td><td>${j.attempt}</td><td>${j.stoppable ? "" : "moved"}</td>
+      <td class="wrap">${esc(j.reason)}</td></tr>`;
+  }));
+  setTimeout(() => document.querySelectorAll("#ledger tr.flash").forEach(r => r.classList.remove("flash")), 50);
+  return html;
+}
+
+function robots(data) {
+  const body = document.getElementById("robots-body");
+  if (data.error) { body.innerHTML = `<p class="error">${esc(data.error)}</p>`; return; }
+  body.querySelector(".error")?.remove();
+  for (const r of data.robots) {
+    let card = document.getElementById(`robot-${r.device_id}`);
+    if (!card) {  // built once, so the deck view's iframe isn't reloaded on every poll
+      card = document.createElement("div");
+      card.className = "robot"; card.id = `robot-${r.device_id}`;
+      card.innerHTML = `<h3>${esc(r.device_id)}</h3><div class="info"></div>` +
+        (r.viewer ? `<div class="viewer"><iframe src="${esc(r.viewer)}" title="${esc(r.device_id)} deck view"></iframe></div>`
+                  : `<p class="muted">No deck view (fake backend).</p>`);
+      body.appendChild(card);
+    }
+    const hb = r.heartbeat_s == null ? "" : ` · heartbeat ${r.heartbeat_s}s ago`;
+    card.querySelector(".info").innerHTML =
+      `<div class="${cls(r.status)}"><b>${esc(r.status)}</b>: ${esc(r.detail)}</div>
+       <div class="muted">lock: ${esc(r.lock || "free")}${r.liquid_moved ? " · liquid moved" : ""}${esc(hb)}</div>`;
+  }
+}
+
+async function poll() {
+  const parts = [["nf-body", "api/nextflow", nextflow], ["adapter-body", "api/adapter", adapter], ["ledger-body", "api/ledger", ledger]];
+  await Promise.all(parts.map(async ([id, path, render]) => {
+    const el = document.getElementById(id);
+    try { el.innerHTML = render(await get(path)); }
+    catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  }));
+  try { robots(await get("api/robots")); }
+  catch (e) { document.getElementById("robots-body").innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+(async () => {
+  const c = await get("api/config");
+  document.getElementById("where").textContent = `adapter ${c.adapter} · log ${c.nextflow_log}`;
+  const frame = document.createElement("iframe");
+  frame.src = `${c.adapter}/deck`; frame.title = "Deck controls";
+  document.getElementById("deck").appendChild(frame);
+  poll();
+  setInterval(poll, 1000);
+})();
+</script>
+</body>
+</html>

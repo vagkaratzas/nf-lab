@@ -29,6 +29,10 @@ jobs:
         working-directory: adapter
         run: uv sync --locked && uv run pytest -q
 
+      - name: Dashboard tests
+        working-directory: dashboard
+        run: uv sync --locked && uv run pytest -q
+
       - uses: nf-core/setup-nextflow@v2
         with:
           version: 26.10.2
