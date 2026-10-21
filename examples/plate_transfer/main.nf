@@ -30,7 +30,8 @@ workflow {
     reports = PLATE_REPORT(transferred)
     samples = transferred
         .flatMap { p -> transferredWells(p) }
-        .filter { w -> w.type == 'sample' }  // controls and blanks stay in the plate report
+        // controls, blanks and wells read at 0 µL (e.g. a job a person resolved as done) stay in the plate report
+        .filter { w -> w.type == 'sample' && (w.volume_ul as Double) > 0 }
 
     publish:
     plates = transferred
@@ -39,11 +40,13 @@ workflow {
 }
 
 // One record per well of a transferred plate, from its result.json and provenance.json.
+// attempt and reason say how the job ended, e.g. "resolved as done by ana; was failed_in_protocol: ...".
 def transferredWells(p: Record) -> Iterable<Record> {
     def job = new groovy.json.JsonSlurper().parseText(p.provenance.text) as Map<String,?>
     return p.result.splitJson(path: 'wells').collect { w ->
         record(sample: w.sample, type: w.type, plate: p.id, well: "${w.row}${w.column}",
-               volume_ul: w.volume_ul, job_id: job.job_id, device_id: job.device_id)
+               volume_ul: w.volume_ul, job_id: job.job_id, device_id: job.device_id,
+               attempt: job.attempt, reason: job.reason ?: '')
     }
 }
 
