@@ -7,7 +7,7 @@ the final job as JSON and exits with:
 
     0    done
     75   failed before any liquid moved: retryable (errorStrategy retries 75 and 69)
-    1    failed in protocol, stopped by a human, or a request was refused
+    1    failed in protocol, stopped or voided by a human, or a request was refused
     69   adapter unreachable for longer than `--grace` seconds: outcome unknown
     143  TERM (run abort) or 130 INT: safe_stop sent; the ledger keeps the outcome
 
@@ -41,7 +41,9 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1}
+# Every final state: labctl polls until it sees one. voided: a person pressed Failed before
+# labctl saw the failure; the run ends, and its rerun runs the job again as a new attempt.
+EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1, "voided": 1}
 
 
 class Unreachable(Exception):
