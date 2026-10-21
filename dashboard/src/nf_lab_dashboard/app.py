@@ -145,7 +145,8 @@ def main() -> FastAPI:
     default_log = Path(os.environ.get("NF_LAB_NEXTFLOW_LOG", NF_LAB / "examples/plate_transfer/.nextflow.log")).resolve()
     demo = Demo(Settings(nf_lab=NF_LAB, port=urllib.parse.urlparse(adapter).port or 8000,
                          backend=os.environ.get("NF_LAB_DEMO_BACKEND", "plr"),
-                         step=float(os.environ.get("NF_LAB_DEMO_STEP", "1.5"))))
+                         step=float(os.environ.get("NF_LAB_DEMO_STEP", "1.5")),
+                         beat=float(os.environ.get("NF_LAB_DEMO_BEAT", "5"))))
 
     def paths() -> tuple[Path, Path]:
         """The ledger and Nextflow log the panels read: the demo's while one has run, else the settings'."""

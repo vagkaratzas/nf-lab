@@ -33,7 +33,7 @@ class Settings:
     backend: str = "plr"  # plr: PyLabRobot simulation with deck views; fake: tests
     step: float = 1.5  # seconds per simulated robot step: slow enough to follow (a plate takes ~15-20 s)
     nextflow: list[str] = field(default_factory=lambda: [os.environ.get("NXF_CMD", "nextflow")])
-    beat: float = 1.5  # pause before each person step, so the audience sees it coming
+    beat: float = 5.0  # wait before each person step, and the least a narration stays up: time to follow
     tick: float = 0.5  # how often the person looks at the decks
     runs: Path | None = None  # one folder per scenario (ledger, logs, results); default nf-lab/build/demo
 
@@ -102,9 +102,9 @@ class Demo:
             self.highlight = {"device": device, "n": len(self.log)}
 
     async def say(self, text: str) -> None:
-        """Narrate, then give the audience time to read it (longer text, longer pause)."""
+        """Narrate, then give the audience time to read it: at least a beat, ~20 characters a second."""
         self.note("say", text)
-        await asyncio.sleep(self.s.beat * (1 + len(text) / 60))
+        await asyncio.sleep(max(self.s.beat, len(text) / 20) if self.s.beat else 0)
 
     async def person(self, text: str, device: str, method: str, path: str, body: dict | None = None,
                      still: Callable[[Devices], bool] | None = None) -> dict | None:

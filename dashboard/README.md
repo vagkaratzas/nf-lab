@@ -15,8 +15,8 @@ The panels only read: they open the ledger read-only. The demo bar is the one pa
 
 The bar at the top runs scripted demos. Each one starts fresh: it starts its own adapter (a new ledger, two simulated PyLabRobot robots, empty decks), runs `examples/plate_transfer`, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
 
-- **Pool**: four plates over two robots; the operator loads plates as robots free up. About 1.5 minutes.
-- **E-stop**: the operator e-stops one robot mid-plate. The other robot finishes (`errorStrategy 'finish'`), the run ends failed; the operator presses Failed and unloads; a `-resume` rerun runs only that plate again, as attempt 2. About 3 minutes.
+- **Pool**: four plates over two robots; the operator loads plates as robots free up. About 2.5 minutes.
+- **E-stop**: the operator e-stops one robot mid-plate. The other robot finishes (`errorStrategy 'finish'`), the run ends failed; the operator presses Failed and unloads; a `-resume` rerun runs only that plate again, as attempt 2. About 4 minutes.
 
 **Stop** ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and leaves the adapter up. There is no pause: Nextflow and the robots can't be paused, so a paused narrator would fall out of step with them. The demos run slowly instead (`NF_LAB_DEMO_STEP`).
 
@@ -26,7 +26,7 @@ For the demos, start only the dashboard: they need port 8000 free, so stop any a
 cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080
 ```
 
-Settings: `NF_LAB_DEMO_STEP` (seconds per robot step, default 1.5), `NF_LAB_DEMO_BACKEND` (`plr`, or `fake` without deck views).
+Settings: `NF_LAB_DEMO_BEAT` (seconds before each person step, and the least a narration line stays up, default 5), `NF_LAB_DEMO_STEP` (seconds per robot step, default 1.5), `NF_LAB_DEMO_BACKEND` (`plr`, or `fake` without deck views).
 
 ## Run with your own adapter
 
