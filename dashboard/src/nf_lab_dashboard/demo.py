@@ -5,9 +5,8 @@ runs the example pipeline, and plays the person at the deck: it loads and unload
 plates, presses e-stop, Succeeded or Failed, all through the adapter's operator
 API, as a person on the deck page would. It narrates each step.
 
-Pause holds the scenario before its next narration or person step; Nextflow and
-the robots keep going (a paused demo leaves plates waiting to be loaded).
-Stop ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and
+No pause: Nextflow and the robots can't be paused, so a paused narrator would fall
+out of step with them. Stop ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and
 leaves the adapter up to look around.
 
 Never imports adapter code: it starts the adapter as a process and talks HTTP.
@@ -32,7 +31,7 @@ class Settings:
     nf_lab: Path
     port: int = 8000
     backend: str = "plr"  # plr: PyLabRobot simulation with deck views; fake: tests
-    step: float = 1.0  # seconds per simulated robot step: slow enough to follow (a plate takes ~12 s)
+    step: float = 1.5  # seconds per simulated robot step: slow enough to follow (a plate takes ~15-20 s)
     nextflow: list[str] = field(default_factory=lambda: [os.environ.get("NXF_CMD", "nextflow")])
     beat: float = 1.5  # pause before each person step, so the audience sees it coming
     tick: float = 0.5  # how often the person looks at the decks
@@ -54,8 +53,6 @@ class Demo:
         self.status = "idle"  # running, finished, failed, stopped
         self.log: list[dict] = []
         self.highlight: dict | None = None  # the device the last person step acted on
-        self.playing = asyncio.Event()
-        self.playing.set()
         self.task: asyncio.Task | None = None
         self.adapter: asyncio.subprocess.Process | None = None
         self.pipeline: asyncio.subprocess.Process | None = None
@@ -65,14 +62,13 @@ class Demo:
 
     def view(self) -> dict:
         return {"scenarios": [{"id": k, "title": t, "blurb": b} for k, (t, b, _) in SCENARIOS.items()],
-                "active": self.name, "status": self.status, "paused": not self.playing.is_set(),
+                "active": self.name, "status": self.status,
                 "log": self.log[-60:], "highlight": self.highlight}
 
     def start(self, name: str) -> None:
         if self.task and not self.task.done():
             raise Busy(f"{self.name} is running: stop it first")
         self.name, self.status, self.log, self.highlight = name, "running", [], None
-        self.playing.set()
         self.run_dir = (self.s.runs or self.s.nf_lab / "build" / "demo") / name
         self.task = asyncio.create_task(self._run(SCENARIOS[name][2]))
 
@@ -86,12 +82,6 @@ class Demo:
             self.note("error", f"{type(e).__name__}: {e}")
             self.status = "failed"
 
-    def pause(self) -> None:
-        self.playing.clear()
-
-    def play(self) -> None:
-        self.playing.set()
-
     async def stop(self) -> None:
         if self.task and not self.task.done():
             self.task.cancel()
@@ -99,7 +89,6 @@ class Demo:
             self.note("say", "Stopped. The pipeline was asked to stop (a robot past the stop boundary finishes its plate); "
                              "the adapter stays up.")
         await self._end(self.pipeline, timeout=60)
-        self.playing.set()
 
     async def shutdown(self) -> None:
         await self.stop()
@@ -114,17 +103,26 @@ class Demo:
 
     async def say(self, text: str) -> None:
         """Narrate, then give the audience time to read it (longer text, longer pause)."""
-        await self.playing.wait()
         self.note("say", text)
         await asyncio.sleep(self.s.beat * (1 + len(text) / 60))
 
-    async def person(self, text: str, device: str, method: str, path: str, body: dict | None = None) -> dict:
-        """A person step: wait if paused, a beat for the audience, then press the button."""
-        await self.playing.wait()
+    async def person(self, text: str, device: str, method: str, path: str, body: dict | None = None,
+                     still: Callable[[Devices], bool] | None = None) -> dict | None:
+        """A person step: a beat for the audience, then press the button.
+
+        `still(devices)` re-checks the decks right before the press: during the beat the moment may have
+        passed (the plate finished). Returns None, pressing nothing, when it has, or when the adapter
+        refuses the press (409: the state changed between the check and the press)."""
         await asyncio.sleep(self.s.beat)
-        await self.playing.wait()
+        if still and not still(await self.api("GET", "/devices")):
+            return None
         self.note("person", text, device)
-        return await self.api(method, path, body)
+        try:
+            return await self.api(method, path, body)
+        except urllib.error.HTTPError as e:
+            if e.code != 409:
+                raise
+            return None
 
     async def api(self, method: str, path: str, body: dict | None = None):
         def call():
@@ -214,10 +212,6 @@ class Demo:
 
 # --- scenarios ---
 
-def robot(devices: Devices, i: int) -> dict:
-    return devices[i]
-
-
 async def pool(demo: Demo) -> None:
     await demo.say("Pool: one pipeline, four plates, two simulated liquid handlers. Starting fresh: a new ledger "
                    "and empty decks.")
@@ -234,20 +228,35 @@ async def pool(demo: Demo) -> None:
                    f"results/samples.csv names the robot that pipetted every well.")
 
 
+def mid_plate(d: dict) -> bool:
+    """Running, and liquid has moved: an e-stop now spoils the plate."""
+    return d["status"] == "running" and bool(d["held"]) and not d["held"]["stoppable"]
+
+
 async def estop(demo: Demo) -> None:
     await demo.say("E-stop: the same run, but a person stops one robot mid-plate. Starting fresh.")
     await demo.fresh_adapter()
     await demo.start_pipeline()
-    await demo.say("Four plates, two robots. Watch the first robot: once liquid has moved, the operator will stop it.")
-    devices = await demo.serve_until(lambda ds: robot(ds, 0)["status"] == "running"
-                                     and robot(ds, 0)["held"] and not robot(ds, 0)["held"]["stoppable"])
-    first, job = robot(devices, 0)["device_id"], robot(devices, 0)["held"]
-    await demo.person(f"Something looks wrong on {first}: the operator presses E-stop.", first,
-                      "POST", f"/devices/{first}/estop")
+    await demo.say("Four plates, two robots. Once liquid has moved on a robot, the operator will stop it.")
+    while True:
+        devices = await demo.serve_until(lambda ds: demo.pipeline_ended(ds) or any(mid_plate(d) for d in ds))
+        target = next((d for d in devices if mid_plate(d)), None)
+        if target is None:  # every plate finished before the operator got to one
+            await demo.say(f"Every plate finished before the operator reached E-stop (exit {demo.pipeline.returncode}): "
+                           "the run succeeded. Start E-stop again to see the stop.")
+            return
+        first, job = target["device_id"], target["held"]
+        same_job = lambda ds: any(d["device_id"] == first and mid_plate(d) and d["held"]["job_id"] == job["job_id"]
+                                  for d in ds)
+        if await demo.person(f"Something looks wrong on {first}: the operator presses E-stop.", first,
+                             "POST", f"/devices/{first}/estop", still=same_job) is not None:
+            break
+        await demo.say(f"Too late: plate {job['plate']} on {first} finished before the operator reached E-stop. "
+                       "They'll stop the next plate instead.")
     await demo.say(f"{first} stops at once, mid-plate: its job ends 'stopped' and the robot stays held for a person. "
                    "Nextflow's errorStrategy 'finish' doesn't stop the other robot: tasks already running finish, "
                    "nothing new starts, and the run will end failed.")
-    await demo.serve_until(lambda ds: robot(ds, 0)["status"] == "needs_person")
+    await demo.serve_until(lambda ds: any(d["device_id"] == first and d["status"] == "needs_person" for d in ds))
     await demo.person(f"The operator checks the deck: plate {job['plate']} is spoiled. They press Failed: the job is "
                       "voided, so it may run again.", first, "POST", f"/jobs/{job['job_id']}/resolve",
                       {"outcome": "void", "by": "demo operator", "note": "spoiled by the e-stop"})

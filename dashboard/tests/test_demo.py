@@ -62,23 +62,17 @@ def test_estop_voids_one_plate_and_the_resume_runs_only_it_again(tmp_path):
     assert "presses E-stop" in texts and "They press Failed" in texts and "(exit 1)" in texts and "(exit 0)" in texts
 
 
-def test_pause_holds_the_next_step_and_play_resumes(tmp_path):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    stub = tmp_path / "nextflow"
-    stub.write_text(STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
-    stub.chmod(0o755)
-    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.05, nextflow=[str(stub)], beat=0, tick=0.1,
-                         runs=tmp_path / "runs"))
 
-    async def go():
-        demo.start("pool")
-        demo.pause()
-        await asyncio.sleep(1)
-        assert demo.log == [] and demo.view()["paused"]  # held before its first step
-        demo.play()
-        await asyncio.wait_for(asyncio.shield(demo.task), 60)
-        await demo.shutdown()
-    asyncio.run(go())
-    assert demo.status == "finished", demo.log
+def test_a_person_step_whose_moment_passed_presses_nothing(tmp_path):
+    """The plate finished during the beat before E-stop: the re-check skips the press."""
+    demo = Demo(Settings(nf_lab=NF_LAB, port=9, beat=0))  # nothing listens on port 9
+    pressed = []
+
+    async def api(method, path, body=None):
+        if method == "POST":
+            pressed.append(path)
+        return [{"device_id": "r1", "status": "unload"}]
+    demo.api = api
+    moved_on = asyncio.run(demo.person("presses E-stop", "r1", "POST", "/devices/r1/estop",
+                                       still=lambda ds: ds[0]["status"] == "running"))
+    assert moved_on is None and pressed == [] and demo.log == []

@@ -83,12 +83,11 @@
 <section id="demo" aria-label="Demos">
   <div class="controls">
     <span id="demo-buttons"></span>
-    <button id="demo-pp" disabled>⏸ Pause</button>
     <button id="demo-stop" disabled onclick="demoCall('stop')">■ Stop</button>
     <span id="demo-status">pick a demo</span>
   </div>
   <div id="bubble" class="bubble muted" aria-live="polite">Each demo starts fresh (a new ledger, two simulated robots,
-    empty decks), runs the example pipeline and plays the person at the deck. Pause holds the next person step.</div>
+    empty decks), runs the example pipeline and plays the person at the deck.</div>
   <details><summary>Steps so far</summary><ol id="steps"></ol></details>
 </section>
 <main>
@@ -174,12 +173,8 @@ function demo(d) {
     demoBuilt = true;
   }
   bar.querySelectorAll("button.scenario").forEach(b => { b.disabled = running; b.classList.toggle("active", b.dataset.id === d.active); });
-  const pp = document.getElementById("demo-pp");
-  pp.disabled = !running;
-  pp.textContent = d.paused ? "▶ Play" : "⏸ Pause";
-  pp.onclick = () => demoCall(d.paused ? "play" : "pause");
   document.getElementById("demo-stop").disabled = !running;
-  document.getElementById("demo-status").textContent = d.active ? `${d.active}: ${d.paused ? "paused" : d.status}` : "pick a demo";
+  document.getElementById("demo-status").textContent = d.active ? `${d.active}: ${d.status}` : "pick a demo";
   const last = d.log[d.log.length - 1];
   if (last) {
     const bubble = document.getElementById("bubble");

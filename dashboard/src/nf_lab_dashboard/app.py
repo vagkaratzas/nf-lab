@@ -145,7 +145,7 @@ def main() -> FastAPI:
     default_log = Path(os.environ.get("NF_LAB_NEXTFLOW_LOG", NF_LAB / "examples/plate_transfer/.nextflow.log")).resolve()
     demo = Demo(Settings(nf_lab=NF_LAB, port=urllib.parse.urlparse(adapter).port or 8000,
                          backend=os.environ.get("NF_LAB_DEMO_BACKEND", "plr"),
-                         step=float(os.environ.get("NF_LAB_DEMO_STEP", "1.0"))))
+                         step=float(os.environ.get("NF_LAB_DEMO_STEP", "1.5"))))
 
     def paths() -> tuple[Path, Path]:
         """The ledger and Nextflow log the panels read: the demo's while one has run, else the settings'."""
@@ -209,16 +209,6 @@ def main() -> FastAPI:
             demo.start(scenario)
         except Busy as e:
             raise HTTPException(409, str(e))
-        return demo.view()
-
-    @app.post("/api/demo/pause")
-    async def demo_pause() -> dict:
-        demo.pause()
-        return demo.view()
-
-    @app.post("/api/demo/play")
-    async def demo_play() -> dict:
-        demo.play()
         return demo.view()
 
     @app.post("/api/demo/stop")
