@@ -25,7 +25,7 @@ process WET {
     script:
     """
     labctl run --wait --poll 0.2 \\
-        --capability liquid-handling \\
+        --capability ${task.hints['lab/capability']} \\
         --protocol ${protocol} \\
         --protocol-version 1.0 \\
         --plate ${plate} \\
