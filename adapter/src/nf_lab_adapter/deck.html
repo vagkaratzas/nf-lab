@@ -45,11 +45,23 @@
 <main id="devices"><p class="muted">Loading…</p></main>
 <script>
 
+// What the person typed, per robot: kept across the page's redraws until the action goes through.
+const chosen = {}, notes = {};
+
 async function call(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ by: "operator", ...body }) });
   document.getElementById("error").textContent = r.ok ? "" : (await r.json()).detail;
   refresh();
+  return r.ok;
+}
+
+async function load(id) {
+  if (await call(`devices/${id}/load`, { plate: document.getElementById(`plate-${id}`).value })) delete chosen[id];
+}
+
+async function resolve(id, job, outcome) {
+  if (await call(`jobs/${job}/resolve`, { outcome, note: document.getElementById(`note-${id}`).value })) delete notes[id];
 }
 
 const STATUS_CLASS = { running: "ok", ready: "ok", unload: "warn", needs_person: "bad", empty: "muted" };
@@ -76,16 +88,16 @@ function render(devices, queue) {
       <div class="status ${STATUS_CLASS[d.status]}">${esc(d.detail)}</div>
       <div class="muted">On the deck: ${d.plate ? `plate <b>${esc(d.plate)}</b>` : "nothing"}</div>
       <div class="row">
-        <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(suggest)}">
+        <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(chosen[d.device_id] ?? suggest)}" oninput="chosen['${id}'] = this.value">
         <datalist id="plates-${id}">${toLoad.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
-        <button ${h ? "disabled" : ""} onclick="call('devices/${id}/load', {plate: document.getElementById('plate-${id}').value})">Load plate + confirm deck</button>
+        <button ${h ? "disabled" : ""} onclick="load('${id}')">Load plate + confirm deck</button>
         <button ${running || failed || !d.plate ? "disabled" : ""} title="${failed ? "Press Succeeded or Failed first" : ""}" onclick="call('devices/${id}/unload')">Unload</button>
         <button class="stop" ${running ? "" : "disabled"} onclick="call('devices/${id}/estop')">E-stop</button>
       </div>
       ${failed ? `<div class="row">
-        <input id="note-${id}" placeholder="what the deck shows" aria-label="Note">
-        <button class="succeeded" title="The deck shows the step finished: the result is read off the deck" onclick="call('jobs/${h.job_id}/resolve', {outcome: 'done', note: document.getElementById('note-${id}').value})">Succeeded</button>
-        <button class="failed" title="The material is thrown away: the job may run again" onclick="call('jobs/${h.job_id}/resolve', {outcome: 'void', note: document.getElementById('note-${id}').value})">Failed</button>
+        <input id="note-${id}" placeholder="what the deck shows" aria-label="Note" value="${esc(notes[d.device_id] ?? "")}" oninput="notes['${id}'] = this.value">
+        <button class="succeeded" title="The deck shows the step finished: the result is read off the deck" onclick="resolve('${id}', '${h.job_id}', 'done')">Succeeded</button>
+        <button class="failed" title="The material is thrown away: the job may run again" onclick="resolve('${id}', '${h.job_id}', 'void')">Failed</button>
       </div>` : ""}
     </section>`;
   }).join("") || `<p class="muted">No devices.</p>`;
