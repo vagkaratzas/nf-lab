@@ -85,7 +85,10 @@ def adapter_calls(log: Path, ledger: Path, limit: int = 40) -> list[dict]:
         start = max(0, f.seek(0, 2) - 200_000)  # the tail is enough
         f.seek(start)
         lines = f.read().decode(errors="replace").splitlines()[1 if start else 0:]  # drop a cut first line
-    plates = {r["job_id"]: r["plate"] for r in ledger_rows(ledger, "SELECT job_id, plate FROM jobs")}
+    try:
+        plates = {r["job_id"]: r["plate"] for r in ledger_rows(ledger, "SELECT job_id, plate FROM jobs")}
+    except sqlite3.Error:  # the ledger panel reports it
+        plates = {}
     calls: list[dict] = []
     polling: dict[str, dict] = {}  # who -> its status row still counting polls
     for line in lines:
@@ -153,10 +156,16 @@ def main() -> FastAPI:
         return adapter_calls(request_log, ledger)
 
     @app.get("/api/ledger")
-    async def jobs() -> list[dict]:
-        return ledger_rows(ledger, """SELECT job_id, plate, protocol, device_id, state, attempt, stoppable, reason,
-                                             submitted_at, started_at, finished_at, released_at
-                                      FROM jobs ORDER BY rowid DESC LIMIT 20""")
+    async def jobs() -> list[dict] | dict:
+        hint = "set NF_LAB_LEDGER to the file the adapter uses (the adapter's NF_LAB_LEDGER, as an absolute path)"
+        if not ledger.exists():
+            return {"error": f"no ledger at {ledger}: {hint}"}
+        try:
+            return ledger_rows(ledger, """SELECT job_id, plate, protocol, device_id, state, attempt, stoppable, reason,
+                                                 submitted_at, started_at, finished_at, released_at
+                                          FROM jobs ORDER BY rowid DESC LIMIT 20""")
+        except sqlite3.Error as e:  # e.g. an old ledger the adapter would refuse
+            return {"error": f"can't read the ledger {ledger} ({e}): {hint}"}
 
     @app.get("/api/robots")
     def devices() -> dict:  # sync: the adapter call blocks, so FastAPI runs it in a thread

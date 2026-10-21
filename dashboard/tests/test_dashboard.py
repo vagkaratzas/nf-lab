@@ -58,7 +58,10 @@ def test_endpoints_work_without_an_adapter_or_files(tmp_path, monkeypatch):
     monkeypatch.setenv("NF_LAB_NEXTFLOW_LOG", str(tmp_path / ".nextflow.log"))
     c = TestClient(main())
     assert "nf-lab live" in c.get("/").text
-    assert c.get("/api/ledger").json() == [] and c.get("/api/adapter").json() == []
+    assert "no ledger at" in c.get("/api/ledger").json()["error"] and c.get("/api/adapter").json() == []
+    sqlite3.connect(tmp_path / "ledger.sqlite").execute("CREATE TABLE jobs (job_id TEXT)").connection.commit()
+    assert "no such column: plate" in c.get("/api/ledger").json()["error"]  # an old ledger: say so, don't crash
+    assert c.get("/api/adapter").json() == []
     assert "unreachable" in c.get("/api/robots").json()["error"]
     assert "error" in c.get("/api/nextflow").json()
 

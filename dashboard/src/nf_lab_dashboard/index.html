@@ -77,6 +77,7 @@ function nextflow(run) {
 }
 
 function adapter(calls) {
+  if (calls.error) return `<p class="error">${esc(calls.error)}</p>`;
   return table(["At", "Call", "For", "HTTP"], calls.map(c =>
     `<tr><td>${esc(c.time)}</td><td><code>${esc(c.op)}</code>${c.count > 1 ? ` <span class="muted">×${c.count}</span>` : ""}</td>
      <td>${esc(c.who)}</td><td class="${c.http >= 400 ? "bad" : ""}">${c.http}</td></tr>`));
@@ -84,6 +85,7 @@ function adapter(calls) {
 
 const seen = {};  // job_id -> last state, to flash rows that changed
 function ledger(jobs) {
+  if (jobs.error) return `<p class="error">${esc(jobs.error)}</p>`;
   const html = table(["Plate", "Robot", "State", "Try", "Liquid", "Reason"], jobs.map(j => {
     const changed = seen[j.job_id] !== undefined && seen[j.job_id] !== j.state + j.stoppable + !!j.released_at;
     seen[j.job_id] = j.state + j.stoppable + !!j.released_at;
