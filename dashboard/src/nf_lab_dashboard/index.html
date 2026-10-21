@@ -12,21 +12,29 @@
             --ok: #4ac26b; --warn: #d29922; --bad: #ff6b6b; --info: #6cb6ff; --flash: #5a4a00; }
   }
   * { box-sizing: border-box; }
-  body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 12px 16px; }
-  header { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 10px; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 12px 16px;
+         display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 10px; flex: none; }
   h1 { font-size: 20px; margin: 0; }
   h2 { font-size: 15px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; }
   h2 small { font-weight: normal; color: var(--muted); }
   .muted { color: var(--muted); }
-  main { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(300px, 0.9fr);
+  main { flex: 1; min-height: 0; display: grid; gap: 12px;
+         grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(300px, 0.9fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1.3fr);
          grid-template-areas: "nf adapter ledger deck" "robots robots robots deck"; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+            min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   #nf { grid-area: nf; } #adapter { grid-area: adapter; } #ledger { grid-area: ledger; }
-  #robots { grid-area: robots; } #deck { grid-area: deck; display: flex; flex-direction: column; }
-  @media (max-width: 1100px) {
-    main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "nf" "adapter" "ledger" "robots" "deck"; }
+  #robots { grid-area: robots; } #deck { grid-area: deck; }
+  .scroll { flex: 1; min-height: 0; overflow: auto; }
+  @media (max-width: 1100px) {  /* narrow: one column, the page scrolls */
+    body { height: auto; display: block; }
+    main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "nf" "adapter" "ledger" "robots" "deck"; }
+    .scroll { max-height: 50vh; }
+    .robot { min-height: 420px; }
+    #deck iframe { min-height: 70vh; }
   }
-  .scroll { max-height: 40vh; overflow: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th, td { text-align: left; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { color: var(--muted); font-weight: 600; }
@@ -35,12 +43,16 @@
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .info { color: var(--info); }
   tr.flash td { background: var(--flash); transition: background 0s; }
   tr td { transition: background 1.5s; }
-  .robots { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-  .robot { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .robots { flex: 1; min-height: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .robot { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg);
+           min-height: 0; display: flex; flex-direction: column; }
   .robot h3 { margin: 0 0 4px; font-size: 14px; }
-  .viewer { height: 320px; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); margin-top: 6px; }
-  .viewer iframe { width: 200%; height: 640px; border: 0; transform: scale(.5); transform-origin: 0 0; }
-  #deck iframe { flex: 1; min-height: 70vh; width: 100%; border: 0; border-radius: 6px; background: var(--bg); }
+  /* PyLabRobot's view drawn at twice the box size, scaled to half: the whole deck fits */
+  .viewer { flex: 1; min-height: 120px; position: relative; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); margin-top: 6px; }
+  .viewer iframe { position: absolute; top: 0; left: 0; width: 200%; height: 200%; border: 0; transform: scale(.5); transform-origin: 0 0; }
+  #deck iframe { flex: 1; min-height: 0; width: 100%; border: 0; border-radius: 6px; background: var(--bg); }
+  h2 button { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6px;
+              border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .error { color: var(--bad); }
 </style>
 </head>
@@ -55,7 +67,8 @@
   <section id="adapter"><h2>2 · Adapter <small>calls it received</small></h2><div class="scroll" id="adapter-body"></div></section>
   <section id="ledger"><h2>3 · Ledger <small>jobs, newest first</small></h2><div class="scroll" id="ledger-body"></div></section>
   <section id="robots"><h2>4 · Robots <small>status, lock, heartbeat, deck view</small></h2><div id="robots-body" class="robots"></div></section>
-  <section id="deck"><h2>Deck controls <small>what a person does</small></h2></section>
+  <section id="deck"><h2>Deck controls <small>what a person does</small>
+    <button onclick="reloadFrames()" title="Reload the deck controls and the robots' deck views">↻ Reload</button></h2></section>
 </main>
 <script>
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -72,7 +85,7 @@ function nextflow(run) {
   document.getElementById("run").innerHTML =
     `run <b>${esc(run.run_name || "?")}</b> · <span class="${cls(run.state)}">${esc(run.state)}</span>`;
   return table(["Task", "State", "Tries", "Hash", "At"], run.tasks.map(t =>
-    `<tr><td>${esc(t.name)}</td><td class="${cls(t.state)}">${esc(t.state)}</td><td>${t.attempts || ""}</td>
+    `<tr><td class="wrap">${esc(t.name)}</td><td class="${cls(t.state)}">${esc(t.state)}</td><td>${t.attempts || ""}</td>
      <td><code>${esc(t.hash)}</code></td><td>${esc(t.time)}</td></tr>`));
 }
 
@@ -98,15 +111,19 @@ function ledger(jobs) {
   return html;
 }
 
+let adapterUp = null;  // false while the adapter is unreachable: frames loaded then show "refused to connect"
 function robots(data) {
   const body = document.getElementById("robots-body");
-  if (data.error) { body.innerHTML = `<p class="error">${esc(data.error)}</p>`; return; }
+  if (data.error) { adapterUp = false; body.innerHTML = `<p class="error">${esc(data.error)}</p>`; return; }
+  if (adapterUp === false) reloadFrames();  // back up: reload what failed to load
+  adapterUp = true;
   body.querySelector(".error")?.remove();
   for (const r of data.robots) {
     let card = document.getElementById(`robot-${r.device_id}`);
+    if (card && card.dataset.viewer !== String(r.viewer)) { card.remove(); card = null; }  // restarted: new port
     if (!card) {  // built once, so the deck view's iframe isn't reloaded on every poll
       card = document.createElement("div");
-      card.className = "robot"; card.id = `robot-${r.device_id}`;
+      card.className = "robot"; card.id = `robot-${r.device_id}`; card.dataset.viewer = String(r.viewer);
       card.innerHTML = `<h3>${esc(r.device_id)}</h3><div class="info"></div>` +
         (r.viewer ? `<div class="viewer"><iframe src="${esc(r.viewer)}" title="${esc(r.device_id)} deck view"></iframe></div>`
                   : `<p class="muted">No deck view (fake backend).</p>`);
@@ -128,6 +145,12 @@ async function poll() {
   }));
   try { robots(await get("api/robots")); }
   catch (e) { document.getElementById("robots-body").innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}
+
+function reloadFrames() {
+  const deck = document.querySelector("#deck iframe");
+  if (deck) deck.src = deck.src;
+  document.getElementById("robots-body").innerHTML = "";  // the next poll rebuilds the cards and their deck views
 }
 
 (async () => {
