@@ -198,7 +198,8 @@ def test_a_job_runs_only_on_a_deck_holding_its_plate(tmp_path):
         assert c.get(f"/jobs/{p2['job_id']}").json()["state"] == "queued"
 
         view = c.get("/devices").json()[0]
-        assert (view["plate"], view["held"]["job_id"], [j["plate"] for j in view["queued"]]) == ("P1", p1["job_id"], ["P2"])
+        assert (view["plate"], view["held"]["job_id"], view["status"]) == ("P1", p1["job_id"], "unload")
+        assert [j["plate"] for j in c.get("/queue").json()] == ["P2"]
         assert load(c, "P2").status_code == 409  # P1 still on the deck
         assert c.post("/devices/fake-1/unload", json={"by": "ana"}).json()["held"] is None
         assert c.get(f"/jobs/{p1['job_id']}").json()["released_at"]
@@ -235,6 +236,31 @@ def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
         for d in ("fake-1", "fake-2"):
             runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
             assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
+
+
+def test_devices_and_queue_tell_a_newcomer_what_to_do(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.05)) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        status = lambda: {d["device_id"]: (d["status"], d["detail"]) for d in c.get("/devices").json()}
+        assert "preflight_fail" in c.get("/devices").json()[0]["protocols"]  # what can I do here?
+        assert status()["fake-1"] == ("empty", "empty deck: load a plate")
+
+        a = c.post("/jobs", json=req("a")).json()
+        assert c.get("/queue").json()[0]["waiting_for"] == "plate P1 isn't on any deck: load it on fake-1 or fake-2"
+        load(c, "P1", "fake-1")
+        wait(c, a["job_id"])
+        assert status()["fake-1"] == ("unload", "done with plate P1: unload it")
+        c.post("/jobs", json=req("b"))  # same plate again: it has to come off and back on
+        assert c.get("/queue").json()[0]["waiting_for"] == \
+            "plate P1 is on fake-1, done with plate P1: unload it, then load P1 again"
+
+        load(c, "P2", "fake-2")
+        wait(c, c.post("/jobs", json=req("c", "preflight_fail", plate="P2")).json()["job_id"])
+        assert status()["fake-2"] == ("ready", "ready for plate P2; last job (plate P2) failed pre-flight: "
+                                               "RuntimeError: deck check failed: tip rack missing")
+        load(c, "P3", "fake-2")  # free (a pre-flight failure doesn't hold it): the plate swaps
+        assert c.post("/jobs", json=req("d", plate="P4")).status_code == 201
+        assert c.get("/queue").json()[1]["waiting_for"] == "plate P4 isn't on any deck: load it on fake-2"
 
 
 def test_unload_and_load_wait_for_a_running_job(tmp_path):

@@ -19,6 +19,7 @@ import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -66,13 +67,28 @@ class Resolve(Operator):
     note: str = ""
 
 
+class DeviceStatus(StrEnum):
+    empty = "empty"  # nothing on the deck: load a plate
+    ready = "ready"  # a plate on the deck, free: its queued jobs start here
+    running = "running"
+    unload = "unload"  # done: a person takes the plate off
+    needs_person = "needs_person"  # failed in protocol or stopped: check the deck, resolve, unload
+
+
 class DeviceView(BaseModel):
     device_id: str
     capability: str
+    protocols: list[str]
+    viewer: str | None = Field(description="Live view of the deck, if the backend serves one")
     simulated_operator: bool
+    status: DeviceStatus
+    detail: str = Field(description="The status in words, with the last job's pre-flight failure if any")
     plate: str | None = Field(description="Plate on the deck; None: empty")
     held: Job | None = Field(description="The job locking the device: running, or finished and not yet unloaded")
-    queued: list[Job] = Field(description="The pool's queue: jobs any device of this capability may take")
+
+
+class QueuedJob(Job):
+    waiting_for: str = Field(description="What has to happen at the decks before the job can start")
 
 
 class Adapter:
@@ -228,10 +244,42 @@ class Adapter:
         self.wake_pool(job.capability)
         return job
 
+    def status(self, device: Device) -> tuple[DeviceStatus, str]:
+        h, plate = self.ledger.held(device.device_id), self.ledger.plate(device.device_id)
+        if h and h.state not in FINAL:
+            return DeviceStatus.running, (f"running {h.protocol} on plate {h.plate}"
+                                          f" ({h.state}{'' if h.stoppable else ', liquid moved'})")
+        if h and h.state == State.done:
+            return DeviceStatus.unload, f"done with plate {h.plate}: unload it"
+        if h:
+            return DeviceStatus.needs_person, f"{h.state} on plate {h.plate}: check the deck, resolve, then unload ({h.reason})"
+        status, text = (DeviceStatus.ready, f"ready for plate {plate}") if plate else (DeviceStatus.empty, "empty deck: load a plate")
+        if (last := self.ledger.last(device.device_id)) and last.state == State.failed_preflight:
+            text += f"; last job (plate {last.plate}) failed pre-flight: {last.reason}"
+        return status, text
+
     def view(self, device: Device) -> DeviceView:
+        status, detail = self.status(device)
         return DeviceView(device_id=device.device_id, capability=device.capability,
-                          simulated_operator=device.simulated_operator, plate=self.ledger.plate(device.device_id),
-                          held=self.ledger.held(device.device_id), queued=self.ledger.queued(device.capability))
+                          protocols=sorted(device.backend.PROTOCOLS), viewer=device.backend.viewer,
+                          simulated_operator=device.simulated_operator, status=status, detail=detail,
+                          plate=self.ledger.plate(device.device_id), held=self.ledger.held(device.device_id))
+
+    def waiting_for(self, job: Job) -> str:
+        """What a person has to do at the decks before the queued job can start."""
+        pool = [d for d in self.by_id.values() if d.capability == job.capability]
+        if on := self.ledger.where(job.plate):
+            device = self.by_id[on]
+            if device not in pool:
+                return f"plate {job.plate} is on {on}, which has no {job.capability}: unload it there"
+            status, text = self.status(device)
+            if status == DeviceStatus.ready:
+                return f"plate {job.plate} is on {on}: starts there after earlier jobs for that plate"
+            return f"plate {job.plate} is on {on}, {text}" + (f", then load {job.plate} again" if status != DeviceStatus.running else "")
+        if free := [d.device_id for d in pool if not self.ledger.held(d.device_id)]:
+            return f"plate {job.plate} isn't on any deck: load it on {' or '.join(free)}"
+        busy = "; ".join(f"{d.device_id}: {self.status(d)[1]}" for d in pool)
+        return f"plate {job.plate} isn't on any deck and no {job.capability} device is free: {busy}"
 
 
 def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
@@ -327,7 +375,13 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 
     @app.get("/devices", tags=["operator"])
     async def list_devices() -> list[DeviceView]:
+        """What each device can do, and whether it's free and ready."""
         return [adapter.view(d) for d in devices]
+
+    @app.get("/queue", tags=["operator"])
+    async def queue() -> list[QueuedJob]:
+        """Queued jobs, oldest first, each with what it waits for."""
+        return [QueuedJob(**j.model_dump(), waiting_for=adapter.waiting_for(j)) for j in ledger.queued()]
 
     @app.post("/devices/{device_id}/load", tags=["operator"], responses={404: {}, 409: {}})
     async def load(device_id: str, req: Load) -> DeviceView:

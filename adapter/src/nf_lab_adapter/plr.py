@@ -44,6 +44,7 @@ class PlrSimBackend:
         self.volume_ul = volume_ul
         self.visualize = visualize
         self.lh: LiquidHandler | None = None  # set up when the adapter starts
+        self.viewer: str | None = None
 
     async def _op(self, progress: Progress, coro) -> None:
         await coro
@@ -56,7 +57,9 @@ class PlrSimBackend:
         await lh.setup()
         self.deck = self._load_deck(lh)
         if self.visualize:
-            await Visualizer(resource=lh, open_browser=False).setup()
+            v = Visualizer(resource=lh, open_browser=False)
+            await v.setup()
+            self.viewer = f"http://{v.host}:{v.fs_port}"  # the port it found free
         self.lh = lh
 
     async def load(self, plate: str | None) -> None:

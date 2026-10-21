@@ -35,6 +35,9 @@ class Progress(Protocol):
 
 
 class Backend(Protocol):
+    PROTOCOLS: set[str]  # the protocols this binding runs
+    viewer: str | None  # URL of a live view of the deck, if the binding serves one
+
     async def setup(self) -> None: ...  # once, when the adapter starts
     async def run(self, job: Job, progress: Progress) -> dict: ...
     async def load(self, plate: str | None) -> None: ...
@@ -44,7 +47,8 @@ class Backend(Protocol):
 class FakeBackend:
     """Scripted device for tests. The protocol name picks the script."""
 
-    SCRIPTS = {"ok", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    PROTOCOLS = {"ok", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    viewer = None
 
     def __init__(self, step: float = 0.05):
         self.step = step  # seconds per simulated step
@@ -62,7 +66,7 @@ class FakeBackend:
         script = job.protocol
         await asyncio.sleep(self.step)  # deck check
         progress()
-        if script not in self.SCRIPTS:
+        if script not in self.PROTOCOLS:
             raise ValueError(f"unknown protocol {script!r}")
         if script == "preflight_fail" or (script == "preflight_once" and job.attempt == 1):
             raise RuntimeError("deck check failed: tip rack missing")

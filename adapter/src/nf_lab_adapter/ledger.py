@@ -151,10 +151,16 @@ class Ledger:
             (device_id,),
         ).fetchone())
 
-    def queued(self, capability: str) -> list[Job]:
-        """The pool's queue: jobs waiting for any device with this capability, oldest first."""
-        rows = self.db.execute("SELECT * FROM jobs WHERE capability = ? AND state = 'queued' ORDER BY rowid", (capability,))
+    def queued(self, capability: str | None = None) -> list[Job]:
+        """The pool's queue: jobs waiting for any device with this capability (None: any), oldest first."""
+        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' AND (?1 IS NULL OR capability = ?1)"
+                               " ORDER BY rowid", (capability,))
         return [self._job(r) for r in rows]
+
+    def last(self, device_id: str) -> Job | None:
+        """The job the device started most recently."""
+        return self._job(self.db.execute(
+            "SELECT * FROM jobs WHERE device_id = ? ORDER BY started_at DESC LIMIT 1", (device_id,)).fetchone())
 
     def next_runnable(self, device_id: str, capability: str) -> Job | None:
         """Oldest queued job of the capability for the plate on the device's deck; None while the device is locked."""
