@@ -45,9 +45,12 @@ class Backend(Protocol):
 
 
 class FakeBackend:
-    """Scripted device for tests. The protocol name picks the script."""
+    """Scripted device for tests. The protocol name picks the script.
 
-    PROTOCOLS = {"ok", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    `plate_transfer` runs like `ok` and returns PlrSimBackend's result shape
+    (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot."""
+
+    PROTOCOLS = {"ok", "plate_transfer", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
     viewer = None
 
     def __init__(self, step: float = 0.05):
@@ -60,6 +63,8 @@ class FakeBackend:
         pass
 
     async def read_result(self, job: Job) -> dict:
+        if job.protocol == "plate_transfer":
+            return {"plate": job.plate, "wells": [{**w.model_dump(mode="json"), "volume_ul": 150.0} for w in job.wells]}
         return {"wells": len(job.wells)}
 
     async def run(self, job: Job, progress: Progress) -> dict:

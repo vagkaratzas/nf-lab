@@ -84,6 +84,14 @@ def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
         raise AssertionError("old ledger accepted")
 
 
+def test_fake_plate_transfer_returns_the_plr_result_shape(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        job = run(c, "pt", "plate_transfer")
+        assert job["result"] == {"plate": "P1", "wells": [
+            {"row": "A", "column": 1, "sample": "S1", "type": "sample", "volume_ul": 150.0},
+            {"row": "B", "column": 1, "sample": "S2", "type": "sample", "volume_ul": 150.0}]}
+
+
 def test_two_jobs_on_one_device_run_serially(tmp_path):
     with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
         a = c.post("/jobs", json=req("a")).json()

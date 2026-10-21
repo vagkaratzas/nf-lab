@@ -39,7 +39,7 @@ The deck page lists each robot's protocols under its name. For the same list wit
 curl -s localhost:8000/devices | jq '.[] | {device_id, capability, protocols}'
 ```
 
-A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot backend runs one protocol, `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate).
+A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot backend runs one protocol, `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate). The fake backend runs `plate_transfer` too, instantly and with the same result shape, so `examples/plate_transfer` runs without PyLabRobot; its other protocols (`ok`, `preflight_fail`, `protocol_fail`…) are scripted failures for tests.
 
 ### Which robots are free, and which are ready?
 
