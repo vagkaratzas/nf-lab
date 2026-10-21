@@ -9,6 +9,11 @@ locked while one of its jobs has started and is not yet released.
 
 Decks: the plate a person loaded on each device, also kept here. A device runs
 a queued job only when it is free and holds the job's plate (free is not ready).
+
+Device pool: a job names a capability, not a device. It stays unbound
+(device_id NULL) while queued; the free device of that capability whose deck
+holds the job's plate takes it. A plate is on one deck at most, so one device
+can take it.
 """
 
 import json
@@ -23,7 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_id TEXT PRIMARY KEY,
     idempotency_key TEXT NOT NULL,
     attempt INTEGER NOT NULL,
-    device_id TEXT NOT NULL,
+    device_id TEXT,  -- NULL while queued: bound when a device of the pool takes the job
     capability TEXT NOT NULL,
     protocol TEXT NOT NULL,
     protocol_version TEXT NOT NULL,
@@ -48,9 +53,9 @@ CREATE TABLE IF NOT EXISTS decks (
     loaded_at TEXT,
     loaded_by TEXT
 );
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 """
-VERSION = 2  # bump with any SCHEMA change
+VERSION = 3  # bump with any SCHEMA change
 
 PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
 
@@ -111,7 +116,7 @@ class Ledger:
             ).fetchone()
         )
 
-    def submit(self, req: SubmitRequest, device_id: str) -> tuple[Job, bool]:
+    def submit(self, req: SubmitRequest) -> tuple[Job, bool]:
         """Insert a job unless the key already has a live one. Returns (job, created)."""
         with self.db:  # one transaction: the count, the check and the insert
             self.db.execute("BEGIN IMMEDIATE")
@@ -124,10 +129,10 @@ class Ledger:
             job_id = uuid.uuid4().hex
             try:
                 self.db.execute(
-                    """INSERT INTO jobs (job_id, idempotency_key, attempt, device_id, capability, protocol,
+                    """INSERT INTO jobs (job_id, idempotency_key, attempt, capability, protocol,
                                          protocol_version, plate, wells, state, submitted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
-                    (job_id, req.idempotency_key, attempts + 1, device_id, req.capability, req.protocol,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
+                    (job_id, req.idempotency_key, attempts + 1, req.capability, req.protocol,
                      req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]), now()),
                 )
             except sqlite3.IntegrityError:  # a live job already holds this key
@@ -146,16 +151,23 @@ class Ledger:
             (device_id,),
         ).fetchone())
 
-    def queued(self, device_id: str) -> list[Job]:
-        rows = self.db.execute("SELECT * FROM jobs WHERE device_id = ? AND state = 'queued' ORDER BY rowid", (device_id,))
+    def queued(self, capability: str | None = None) -> list[Job]:
+        """The pool's queue: jobs waiting for any device with this capability (None: any), oldest first."""
+        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' AND (?1 IS NULL OR capability = ?1)"
+                               " ORDER BY rowid", (capability,))
         return [self._job(r) for r in rows]
 
-    def next_runnable(self, device_id: str) -> Job | None:
-        """Oldest queued job for the plate on the device's deck; None while the device is locked."""
+    def last(self, device_id: str) -> Job | None:
+        """The job the device started most recently."""
+        return self._job(self.db.execute(
+            "SELECT * FROM jobs WHERE device_id = ? ORDER BY started_at DESC LIMIT 1", (device_id,)).fetchone())
+
+    def next_runnable(self, device_id: str, capability: str) -> Job | None:
+        """Oldest queued job of the capability for the plate on the device's deck; None while the device is locked."""
         if self.held(device_id):
             return None
         plate = self.plate(device_id)
-        return next((j for j in self.queued(device_id) if j.plate == plate), None)
+        return next((j for j in self.queued(capability) if j.plate == plate), None)
 
     def plate(self, device_id: str) -> str | None:
         row = self.db.execute("SELECT plate FROM decks WHERE device_id = ?", (device_id,)).fetchone()

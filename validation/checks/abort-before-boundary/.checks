@@ -1,10 +1,12 @@
 # Criterion: aborting the run safe-stops wet tasks; before the boundary nothing is consumed.
 NF_LAB_STEP=1 start_adapter
 nf_bg --plates 2
-until_sql "SELECT count(*) = 1 FROM jobs WHERE state = 'preflight'"
+# both jobs submitted (the second waits for the robot), the first in pre-flight
+until_sql "SELECT (SELECT count(*) FROM jobs) = 2 AND (SELECT count(*) FROM jobs WHERE state = 'preflight') = 1"
 kill -TERM $NF_PID  # what a dry-task failure or a scheduler kill does: Nextflow aborts the run
 fails wait $NF_PID
-[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'failed_preflight' AND reason = 'safe_stop'") == 2 ]]
+# Nextflow exits without waiting for labctl's safe_stop (the wrapper's TERM trap doesn't wait): wait for it
+until_sql "SELECT count(*) = 2 FROM jobs WHERE state = 'failed_preflight' AND reason = 'safe_stop'"
 [[ $(cat work/*/*/labctl.log | grep -c 'signal 15: safe_stop') == 2 ]]
 nf --plates 2 -resume  # attempt 2 of both, nothing consumed by attempt 1
 [[ $(sql "SELECT group_concat(state) FROM (SELECT state FROM jobs WHERE attempt = 2)") == done,done ]]

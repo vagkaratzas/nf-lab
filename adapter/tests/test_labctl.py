@@ -40,10 +40,10 @@ def serve(tmp_path, step: float = 0.05):
 
 
 def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float = 2, wait=True,
-           out: Path | None = None, wells=("A1:S1", "B1:S2"), **popen):
+           out: Path | None = None, wells=("A1:S1", "B1:S2"), poll: float = 0.05, **popen):
     cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--capability", "liquid-handling",
            "--protocol", protocol, "--protocol-version", "1.0", "--plate", "P1", "--wells", *wells,
-           "--adapter", url, "--poll", "0.05", "--grace", str(grace),
+           "--adapter", url, "--poll", str(poll), "--grace", str(grace),
            "--outdir", str(out or tempfile.mkdtemp())]
     cmd += ["--key", key] if key else []
     cmd += ["--wait"] if wait else []
@@ -101,6 +101,16 @@ def test_exit_codes_follow_the_stop_boundary(tmp_path):
         assert not (tmp_path / "w" / "result.json").exists()  # no result: the task fails without outputs
         assert finish(labctl(url, key="other", wait=False))[0] == 0  # submitted, not waited on
         assert finish(labctl(url, "estop", key="other"))[0] == 1  # 409: key used with another payload
+
+
+def test_a_job_voided_between_polls_ends_labctl(tmp_path):
+    """The person presses Failed before labctl's next poll: labctl sees `voided`, not `stopped`."""
+    with serve(tmp_path) as (url, _):
+        p = labctl(url, "estop", key="v", poll=1.5)
+        job = until(url, "v", lambda j: j["state"] == "stopped")
+        Client(url, 0, 0).once("POST", f"/jobs/{job['job_id']}/resolve", {"outcome": "void"})
+        code, job = finish(p)
+        assert (code, job["state"]) == (1, "voided")
 
 
 def test_term_safe_stops_before_the_boundary(tmp_path):

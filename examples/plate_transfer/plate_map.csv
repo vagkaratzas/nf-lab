@@ -18,3 +18,17 @@ P2,D,1,S14,sample
 P2,E,1,S15,sample
 P2,F,1,S16,sample
 P2,H,1,NC2,negative_control
+P3,A,1,S17,sample
+P3,B,1,S18,sample
+P3,C,1,S19,sample
+P3,D,1,S20,sample
+P3,E,1,NC3,negative_control
+P3,F,1,BLK3,blank
+P4,A,1,S21,sample
+P4,B,1,S22,sample
+P4,C,1,S23,sample
+P4,D,1,S24,sample
+P4,E,1,S25,sample
+P4,F,1,S26,sample
+P4,G,1,NC4,negative_control
+P4,H,1,BLK4,blank

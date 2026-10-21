@@ -63,7 +63,10 @@ class SubmitRequest(BaseModel):
 class Job(SubmitRequest):
     job_id: str
     attempt: int = Field(description="1 + number of earlier attempts for this key (failed pre-flight or voided)")
-    device_id: str
+    device_id: str | None = Field(
+        description="The device that took the job; None while queued: the free device of the capability "
+                    "whose deck holds the plate takes it"
+    )
     state: State
     stoppable: bool = Field(description="True until the first liquid moves (the stop boundary)")
     stop_requested: bool = Field(description="safe_stop arrived after the stop boundary")

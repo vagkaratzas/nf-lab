@@ -11,3 +11,4 @@ work
 __pycache__
 *.sqlite
 results
+*.requests.jsonl

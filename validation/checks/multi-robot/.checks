@@ -1,0 +1,13 @@
+# Criterion: one run spreads four wet tasks over a pool of two robots: each job runs
+# on the robot holding its plate, one job per robot at a time, both robots busy at once.
+NF_LAB_DEVICES=2 NF_LAB_STEP=0.3 start_adapter
+nf --plates 4
+[[ $(logged 'Submitted process > WET') == 4 ]]
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND released_at IS NOT NULL") == 4 ]]
+[[ $(sql "SELECT count(DISTINCT device_id) FROM jobs") == 2 ]]  # the ledger names the robot of each job
+# one job per robot at a time
+[[ $(sql "SELECT count(*) FROM jobs a JOIN jobs b ON a.job_id < b.job_id AND a.device_id = b.device_id
+          WHERE a.started_at < b.released_at AND b.started_at < a.released_at") == 0 ]]
+# the two robots worked in parallel
+[[ $(sql "SELECT count(*) FROM jobs a JOIN jobs b ON a.job_id < b.job_id AND a.device_id != b.device_id
+          WHERE a.started_at < b.finished_at AND b.started_at < a.finished_at") -gt 0 ]]

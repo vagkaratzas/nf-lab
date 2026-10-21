@@ -1,4 +1,4 @@
-# withLabel 'process_wet' config: exit 75 retried, exit 1 terminates, `cache` honoured.
+# withLabel 'process_wet' config: exit 75 retried, exit 1 ends the run, `cache` honoured.
 start_adapter
 fails nf --protocol preflight_fail
 [[ $(logged 'Re-submitted process > WET') == 2 ]]  # maxRetries 2
@@ -7,7 +7,10 @@ fails nf --protocol protocol_fail
 [[ $(logged 'Re-submitted process > WET') == 0 ]]  # liquid moved: never retried
 # ...and the robot stays locked for a person, even with the simulated operator on
 [[ $(curl -sf "$NF_LAB_ADAPTER/devices" | jq -r '.[0].held.protocol') == protocol_fail ]]
-curl -sf -X POST "$NF_LAB_ADAPTER/devices/fake-1/unload" > /dev/null  # they check the deck and unload
+fails curl -sf -X POST "$NF_LAB_ADAPTER/devices/fake-1/unload"  # not before they resolve it
+job=$(curl -sf "$NF_LAB_ADAPTER/devices" | jq -r '.[0].held.job_id')
+curl -sf -X POST "$NF_LAB_ADAPTER/jobs/$job/resolve" -H 'Content-Type: application/json' -d '{"outcome": "void"}' > /dev/null
+curl -sf -X POST "$NF_LAB_ADAPTER/devices/fake-1/unload" > /dev/null  # Failed, then unload (or the simulated operator does)
 nf
 nf -resume
 [[ $(logged 'Cached process > WET') == 1 ]]

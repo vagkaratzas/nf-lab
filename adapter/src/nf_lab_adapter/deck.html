@@ -24,79 +24,92 @@
                   background: var(--btn); color: var(--fg); }
   button { cursor: pointer; }
   button:disabled { opacity: .4; cursor: default; }
-  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  button.stop, button.failed { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  button.succeeded { border-color: var(--ok); color: var(--ok); font-weight: 600; }
   input { min-width: 0; width: 9em; }
   ul { margin: 6px 0 0; padding-left: 20px; }
   code { font-size: 13px; }
   #error { color: var(--bad); min-height: 1.4em; }
+  #queue { margin-bottom: 14px; }
+  #queue h2 { font-size: 16px; margin: 0; }
+  a { color: inherit; }
 </style>
 </head>
 <body>
 <header>
   <h1>Deck controls</h1>
   <span class="muted">what a person does at each robot</span>
-  <label class="muted">I am <input id="by" value="operator" aria-label="Operator name"></label>
 </header>
 <div id="error" role="alert"></div>
+<section id="queue"></section>
 <main id="devices"><p class="muted">Loading…</p></main>
 <script>
-const FINAL = ["done", "failed_preflight", "failed_in_protocol", "stopped", "voided"];
-const by = document.getElementById("by");
-try { by.value = localStorage.getItem("deck.by") || by.value; } catch (e) {}
-by.onchange = () => { try { localStorage.setItem("deck.by", by.value); } catch (e) {} };
+
+// What the person typed, per robot: kept across the page's redraws until the action goes through.
+const chosen = {}, notes = {};
 
 async function call(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ by: by.value || "operator", ...body }) });
+                                body: JSON.stringify({ by: "operator", ...body }) });
   document.getElementById("error").textContent = r.ok ? "" : (await r.json()).detail;
   refresh();
+  return r.ok;
 }
 
-function status(d) {
-  const h = d.held;
-  if (h && !FINAL.includes(h.state))
-    return ["ok", `Running ${h.protocol} on plate ${h.plate} (${h.state}${h.stoppable ? "" : ", liquid moved"})`];
-  if (h && h.state === "done") return ["warn", `Done with plate ${h.plate}: unload it`];
-  if (h) return ["bad", `${h.state} on plate ${h.plate}: check the deck, resolve, then unload. ${h.reason || ""}`];
-  if (d.plate) return ["ok", `Ready for plate ${d.plate}`];
-  return ["muted", "Empty deck: load a plate"];
+async function load(id) {
+  if (await call(`devices/${id}/load`, { plate: document.getElementById(`plate-${id}`).value })) delete chosen[id];
 }
+
+async function resolve(id, job, outcome) {
+  if (await call(`jobs/${job}/resolve`, { outcome, note: document.getElementById(`note-${id}`).value })) delete notes[id];
+}
+
+const STATUS_CLASS = { running: "ok", ready: "ok", unload: "warn", needs_person: "bad", empty: "muted" };
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
-function render(devices) {
+function render(devices, queue) {
   const main = document.getElementById("devices");
-  const typing = document.activeElement && main.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+  const typing = document.activeElement && document.activeElement.tagName === "INPUT";
   if (typing) return;  // don't wipe what someone is typing
+  document.getElementById("queue").innerHTML = `<h2>Queue</h2>` + (queue.length ? `<ul>${queue.map(j =>
+    `<li><code>${esc(j.protocol)}</code> plate <b>${esc(j.plate)}</b>, ${j.wells.length} wells: ${esc(j.waiting_for)}</li>`).join("")}</ul>`
+    : `<p class="muted">Nothing queued.</p>`);
+  // plates to load: queued, and on no deck; one suggestion per free device, in queue order
+  const onDecks = new Set(devices.map(d => d.plate)), toLoad = [...new Set(queue.map(j => j.plate))].filter(p => !onDecks.has(p));
+  let next = 0;
   main.innerHTML = devices.map(d => {
-    const [cls, text] = status(d), h = d.held, id = esc(d.device_id);
-    const running = h && !FINAL.includes(h.state), failed = h && ["failed_in_protocol", "stopped"].includes(h.state);
-    const waiting = [...new Set(d.queued.map(j => j.plate))];
+    const h = d.held, id = esc(d.device_id);
+    const running = d.status === "running", failed = d.status === "needs_person";
+    const suggest = h ? "" : (toLoad[next++] || "");
     return `<section class="device">
-      <h2>${id} <span class="muted">· ${esc(d.capability)}${d.simulated_operator ? " · simulated operator" : ""}</span></h2>
-      <div class="status ${cls}">${esc(text)}</div>
+      <h2>${id} <span class="muted">· ${esc(d.capability)}${d.simulated_operator ? " · simulated operator" : ""}${d.viewer ? ` · <a href="${esc(d.viewer)}" target="_blank" rel="noopener">deck view</a>` : ""}</span></h2>
+      <div class="muted">Protocols: ${d.protocols.map(p => `<code>${esc(p)}</code>`).join(", ")}</div>
+      <div class="status ${STATUS_CLASS[d.status]}">${esc(d.detail)}</div>
       <div class="muted">On the deck: ${d.plate ? `plate <b>${esc(d.plate)}</b>` : "nothing"}</div>
-      ${d.queued.length ? `<div class="muted">Queued:</div><ul>${d.queued.map(j =>
-        `<li><code>${esc(j.protocol)}</code> plate <b>${esc(j.plate)}</b>, ${j.wells.length} wells${j.plate === d.plate ? "" : " (waiting for its plate)"}</li>`).join("")}</ul>` : ""}
       <div class="row">
-        <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(waiting.find(p => p !== d.plate) || "")}">
-        <datalist id="plates-${id}">${waiting.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
-        <button ${h ? "disabled" : ""} onclick="call('devices/${id}/load', {plate: document.getElementById('plate-${id}').value})">Load plate + confirm deck</button>
-        <button ${running || !d.plate ? "disabled" : ""} onclick="call('devices/${id}/unload')">Unload</button>
+        <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(chosen[d.device_id] ?? suggest)}" oninput="chosen['${id}'] = this.value">
+        <datalist id="plates-${id}">${toLoad.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
+        <button ${h ? "disabled" : ""} onclick="load('${id}')">Load plate + confirm deck</button>
+        <button ${running || failed || !d.plate ? "disabled" : ""} title="${failed ? "Press Succeeded or Failed first" : ""}" onclick="call('devices/${id}/unload')">Unload</button>
         <button class="stop" ${running ? "" : "disabled"} onclick="call('devices/${id}/estop')">E-stop</button>
       </div>
       ${failed ? `<div class="row">
-        <input id="note-${id}" placeholder="what the deck shows" aria-label="Note">
-        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'done', note: document.getElementById('note-${id}').value})">Resolve as done</button>
-        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'void', note: document.getElementById('note-${id}').value})">Void (run again)</button>
+        <input id="note-${id}" placeholder="what the deck shows" aria-label="Note" value="${esc(notes[d.device_id] ?? "")}" oninput="notes['${id}'] = this.value">
+        <button class="succeeded" title="The deck shows the step finished: the result is read off the deck" onclick="resolve('${id}', '${h.job_id}', 'done')">Succeeded</button>
+        <button class="failed" title="The material is thrown away: the job may run again" onclick="resolve('${id}', '${h.job_id}', 'void')">Failed</button>
       </div>` : ""}
     </section>`;
   }).join("") || `<p class="muted">No devices.</p>`;
 }
 
 async function refresh() {
-  try { render(await (await fetch("devices")).json()); }
-  catch (e) { document.getElementById("error").textContent = "adapter unreachable"; }
+  let rs;
+  try { rs = await Promise.all([fetch("devices"), fetch("queue")]); }
+  catch (e) { document.getElementById("error").textContent = "adapter unreachable"; return; }
+  const bad = rs.find(r => !r.ok);  // e.g. a page newer than the running adapter
+  if (bad) { document.getElementById("error").textContent = `${bad.url}: HTTP ${bad.status}; restart the adapter?`; return; }
+  render(await rs[0].json(), await rs[1].json());
 }
 refresh();
 setInterval(refresh, 1000);

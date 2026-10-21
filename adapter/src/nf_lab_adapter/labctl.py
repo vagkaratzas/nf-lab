@@ -7,7 +7,7 @@ the final job as JSON and exits with:
 
     0    done
     75   failed before any liquid moved: retryable (errorStrategy retries 75 and 69)
-    1    failed in protocol, stopped by a human, or a request was refused
+    1    failed in protocol, stopped or voided by a human, or a request was refused
     69   adapter unreachable for longer than `--grace` seconds: outcome unknown
     143  TERM (run abort) or 130 INT: safe_stop sent; the ledger keeps the outcome
 
@@ -41,7 +41,9 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1}
+# Every final state: labctl polls until it sees one. voided: a person pressed Failed before
+# labctl saw the failure; the run ends, and its rerun runs the job again as a new attempt.
+EXIT = {"done": 0, "failed_preflight": 75, "failed_in_protocol": 1, "stopped": 1, "voided": 1}
 
 
 class Unreachable(Exception):
@@ -155,7 +157,7 @@ def run(args: argparse.Namespace) -> int:
             "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
             "idempotency_key": key,
         })
-        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id']}: {job['state']}")
+        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id'] or args.capability + ' pool'}: {job['state']}")
         if not args.wait:
             print(json.dumps(job))
             return 0
@@ -165,7 +167,7 @@ def run(args: argparse.Namespace) -> int:
             job = client.call("GET", f"/jobs/{job['job_id']}")
             if (job["state"], job["stoppable"]) != seen:
                 seen = (job["state"], job["stoppable"])
-                log(f"{job['state']}, stoppable={job['stoppable']}")
+                log(f"{job['state']} on {job['device_id']}, stoppable={job['stoppable']}")
         write_outputs(outdir, job)
         if job["state"] != "done":
             log(f"{job['state']}: {job['reason']}")

@@ -8,7 +8,7 @@
     "/jobs": {
       "post": {
         "summary": "Submit",
-        "description": "Queue a job, or return the existing one for this idempotency key.",
+        "description": "Queue a job for the capability's pool, or return the existing one for this idempotency key.",
         "operationId": "submit",
         "requestBody": {
           "content": {
@@ -220,7 +220,7 @@
             "description": "Not Found"
           },
           "409": {
-            "description": "Job not finished yet"
+            "description": "Job not finished yet, or failed in protocol or stopped and not resolved"
           },
           "422": {
             "description": "Validation Error",
@@ -302,8 +302,16 @@
             "description": "1 + number of earlier attempts for this key (failed pre-flight or voided)"
           },
           "device_id": {
-            "type": "string",
-            "title": "Device Id"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "The device that took the job; None while queued: the free device of the capability whose deck holds the plate takes it"
           },
           "state": {
             "$ref": "#/components/schemas/State"

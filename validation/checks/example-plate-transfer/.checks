@@ -1,0 +1,8 @@
+# examples/plate_transfer runs end to end on the fake backend over two robots:
+# four plates, the wet step's per-well result reaches the dry report and samples.csv.
+NF_LAB_DEVICES=2 start_adapter
+"$NXF_CMD" -q run "$VALIDATION/../examples/plate_transfer" -ansi-log false -output-dir results
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done'") == 4 ]]
+[[ $(sql "SELECT count(DISTINCT device_id) FROM jobs") == 2 ]]
+[[ $(tail -n +2 results/samples.csv | wc -l) == 26 ]]  # sample wells of the plate map
+[[ $(cat results/reports/*.report.tsv | wc -l) == 33 ]]  # every filled well, controls and blanks too

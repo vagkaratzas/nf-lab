@@ -41,8 +41,15 @@ def wait(c: TestClient, job_id: str, until=lambda j: j["state"] in FINAL, timeou
         time.sleep(0.01)
 
 
+def void_and_unload(c: TestClient, job: dict) -> None:
+    """A person checks the deck after a failed or stopped job, presses Failed (void), then unloads."""
+    c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void"})
+    c.post(f"/jobs/{job['job_id']}/release")
+
+
 def run(c: TestClient, key: str, protocol: str = "ok") -> dict:
-    """Submit, wait for a final state, release the device (a no-op once the simulated operator has)."""
+    """Submit, wait for a final state, release the device (a no-op once the simulated operator has;
+    refused for a job failed in protocol or stopped, which a person resolves first)."""
     job = wait(c, c.post("/jobs", json=req(key, protocol)).json()["job_id"])
     c.post(f"/jobs/{job['job_id']}/release")
     return job
@@ -75,13 +82,34 @@ def test_plate_map_is_validated(tmp_path):
 def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
     import sqlite3
     from nf_lab_adapter.ledger import SCHEMA
-    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 2", "user_version = 1"))
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 3", "user_version = 1"))
     try:
         create_app(str(tmp_path / "old.sqlite"), [])
     except RuntimeError as e:
-        assert "ledger version 1, this adapter needs 2" in str(e)
+        assert "ledger version 1, this adapter needs 3" in str(e)
     else:
         raise AssertionError("old ledger accepted")
+
+
+def test_fake_plate_transfer_returns_the_plr_result_shape(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        job = run(c, "pt", "plate_transfer")
+        assert job["result"] == {"plate": "P1", "wells": [
+            {"row": "A", "column": 1, "sample": "S1", "type": "sample", "volume_ul": 150.0},
+            {"row": "B", "column": 1, "sample": "S2", "type": "sample", "volume_ul": 150.0}]}
+
+
+def test_request_log_records_contract_calls_and_operator_actions(tmp_path):
+    with adapter(tmp_path / "ledger.sqlite", operator=False) as c:
+        job = c.post("/jobs", json=req("a")).json()
+        c.get(f"/jobs/{job['job_id']}")
+        c.get("/devices")  # the dashboard's own polls stay out
+        load(c, "P1")
+    log = [json.loads(line) for line in (tmp_path / "ledger.requests.jsonl").read_text().splitlines()]
+    assert [(e["method"], e["path"], e["status"], e.get("location")) for e in log] == [
+        ("POST", "/jobs", 201, f"/jobs/{job['job_id']}"),
+        ("GET", f"/jobs/{job['job_id']}", 200, None),
+        ("POST", "/devices/fake-1/load", 200, None)]
 
 
 def test_two_jobs_on_one_device_run_serially(tmp_path):
@@ -135,6 +163,7 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
             assert job["state"] == state and not job["stoppable"]
             repeat = c.post("/jobs", json=req(key, protocol))
             assert repeat.status_code == 200 and repeat.json()["job_id"] == job["job_id"]
+            void_and_unload(c, job)
 
 
 def test_preflight_failure_frees_the_device_without_release(tmp_path):
@@ -171,7 +200,7 @@ def test_silent_device_fails_and_frees_the_worker(tmp_path):
 
         time.sleep(0.2)
         assert c.get(f"/jobs/{nxt['job_id']}").json()["state"] == "queued"  # lock held for a human
-        c.post(f"/jobs/{silent['job_id']}/release")
+        void_and_unload(c, silent)
         assert wait(c, nxt["job_id"])["state"] == "done"  # the worker wasn't stuck on the silent job
 
 
@@ -198,7 +227,8 @@ def test_a_job_runs_only_on_a_deck_holding_its_plate(tmp_path):
         assert c.get(f"/jobs/{p2['job_id']}").json()["state"] == "queued"
 
         view = c.get("/devices").json()[0]
-        assert (view["plate"], view["held"]["job_id"], [j["plate"] for j in view["queued"]]) == ("P1", p1["job_id"], ["P2"])
+        assert (view["plate"], view["held"]["job_id"], view["status"]) == ("P1", p1["job_id"], "unload")
+        assert [j["plate"] for j in c.get("/queue").json()] == ["P2"]
         assert load(c, "P2").status_code == 409  # P1 still on the deck
         assert c.post("/devices/fake-1/unload", json={"by": "ana"}).json()["held"] is None
         assert c.get(f"/jobs/{p1['job_id']}").json()["released_at"]
@@ -214,6 +244,52 @@ def test_a_plate_is_on_one_device_at_most(tmp_path):
         assert r.status_code == 409 and "plate P1 is on fake-1" in r.json()["detail"]
         assert load(c, "P1", "fake-1").status_code == 200  # loading it again where it is: fine
         assert load(c, "P1", "nope").status_code == 404
+
+
+def test_a_job_runs_on_the_pool_device_holding_its_plate(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.05)) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P2", "fake-2")
+        job = c.post("/jobs", json=req("k", plate="P2")).json()
+        assert job["device_id"] is None  # submit names a capability, not a device
+        assert wait(c, job["job_id"])["device_id"] == "fake-2"  # fake-1 is free but not ready: empty deck
+
+
+def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.1), simulated_operator=True) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        jobs = [c.post("/jobs", json=req(f"k{i}", plate=f"P{i}")).json() for i in range(1, 5)]
+        jobs = [wait(c, j["job_id"], lambda j: j["released_at"]) for j in jobs]
+        assert {j["state"] for j in jobs} == {"done"}
+        assert {j["device_id"] for j in jobs} == {"fake-1", "fake-2"}
+        for d in ("fake-1", "fake-2"):
+            runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
+            assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
+
+
+def test_devices_and_queue_tell_a_newcomer_what_to_do(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.05)) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        status = lambda: {d["device_id"]: (d["status"], d["detail"]) for d in c.get("/devices").json()}
+        assert "preflight_fail" in c.get("/devices").json()[0]["protocols"]  # what can I do here?
+        assert status()["fake-1"] == ("empty", "empty deck: load a plate")
+
+        a = c.post("/jobs", json=req("a")).json()
+        assert c.get("/queue").json()[0]["waiting_for"] == "plate P1 isn't on any deck: load it on fake-1 or fake-2"
+        load(c, "P1", "fake-1")
+        wait(c, a["job_id"])
+        assert status()["fake-1"] == ("unload", "done with plate P1: unload it")
+        c.post("/jobs", json=req("b"))  # same plate again: it has to come off and back on
+        assert c.get("/queue").json()[0]["waiting_for"] == \
+            "plate P1 is on fake-1, done with plate P1: unload it, then load P1 again"
+
+        load(c, "P2", "fake-2")
+        wait(c, c.post("/jobs", json=req("c", "preflight_fail", plate="P2")).json()["job_id"])
+        assert status()["fake-2"] == ("ready", "ready for plate P2; last job (plate P2) failed pre-flight: "
+                                               "RuntimeError: deck check failed: tip rack missing")
+        load(c, "P3", "fake-2")  # free (a pre-flight failure doesn't hold it): the plate swaps
+        assert c.post("/jobs", json=req("d", plate="P4")).status_code == 201
+        assert c.get("/queue").json()[1]["waiting_for"] == "plate P4 isn't on any deck: load it on fake-2"
 
 
 def test_unload_and_load_wait_for_a_running_job(tmp_path):
@@ -236,16 +312,16 @@ def test_estop_stops_at_once_and_keeps_the_lock(tmp_path):
             job = wait(c, job["job_id"])
             assert (job["state"], job["reason"]) == ("stopped", "e-stop pressed by ana")
             assert c.get("/devices").json()[0]["held"]["job_id"] == job["job_id"]  # the operator leaves it for a person
-            c.post("/devices/fake-1/unload")
+            void_and_unload(c, job)
 
 
 def test_resolve_as_done_reads_the_deck_and_the_retry_collects_it(tmp_path):
     with adapter(tmp_path / "ledger.sqlite") as c:
-        job = run(c, "x", "protocol_fail")  # run() unloads it: resolving as done now can't read the deck
-        r = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "done"})
-        assert r.status_code == 409 and "void the job instead" in r.json()["detail"]
-
         job = wait(c, c.post("/jobs", json=req("y", "protocol_fail")).json()["job_id"])
+        for unload in (f"/jobs/{job['job_id']}/release", "/devices/fake-1/unload"):  # not before it's resolved
+            r = c.post(unload)
+            assert r.status_code == 409 and "resolve it first (Succeeded or Failed)" in r.json()["detail"]
+        assert c.get("/devices").json()[0]["status"] == "needs_person"
         assert c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "maybe"}).status_code == 422
         done = c.post(f"/jobs/{job['job_id']}/resolve",
                       json={"outcome": "done", "by": "ana", "note": "all wells filled"}).json()
@@ -264,6 +340,7 @@ def test_void_lets_the_key_run_again(tmp_path):
         assert c.post("/jobs", json=req("z", "protocol_fail")).json()["job_id"] == job["job_id"]  # at-most-once
         void = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void", "by": "ana", "note": "binned"}).json()
         assert void["state"] == "voided" and void["reason"].startswith("voided by ana: binned; was failed_in_protocol")
+        assert wait(c, job["job_id"], lambda j: j["released_at"])  # voided: the simulated operator unloads it
         assert c.get("/lookup/z").json()["job_id"] == job["job_id"]
         retry = c.post("/jobs", json=req("z", "protocol_fail"))
         assert retry.status_code == 201 and retry.json()["attempt"] == 2
