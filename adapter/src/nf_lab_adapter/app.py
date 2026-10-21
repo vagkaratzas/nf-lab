@@ -72,45 +72,55 @@ class DeviceView(BaseModel):
     simulated_operator: bool
     plate: str | None = Field(description="Plate on the deck; None: empty")
     held: Job | None = Field(description="The job locking the device: running, or finished and not yet unloaded")
-    queued: list[Job]
+    queued: list[Job] = Field(description="The pool's queue: jobs any device of this capability may take")
 
 
 class Adapter:
     def __init__(self, ledger: Ledger, devices: list[Device]):
         self.ledger = ledger
-        # one device per capability; pools are DESIGN open question 9.
-        self.devices = {d.capability: d for d in devices}
         self.by_id = {d.device_id: d for d in devices}
         self.wake = {d.device_id: asyncio.Event() for d in devices}
         self.running: dict[str, asyncio.Task] = {}
         self.estops: dict[str, str] = {}  # job_id -> who pressed e-stop
 
+    def wake_pool(self, capability: str) -> None:
+        for d in self.by_id.values():
+            if d.capability == capability:
+                self.wake[d.device_id].set()
+
     async def worker(self, device: Device) -> None:
-        """Run the device's queued jobs one at a time, in submit order, each once its plate is loaded."""
+        """Run the pool's queued jobs one at a time, in submit order, each once its plate is on this deck."""
         wake = self.wake[device.device_id]
         while True:
             wake.clear()
             if device.simulated_operator:
                 await self.operate(device)
-            job = self.ledger.next_runnable(device.device_id)
+            job = self.ledger.next_runnable(device.device_id, device.capability)
             if job is None:  # nothing queued for the plate on the deck, or the device is locked
                 await wake.wait()
                 continue
             await self.run_job(device, job)
 
     async def operate(self, device: Device) -> None:
-        """The simulated operator's turn: unload a done job, then load the oldest queued job's plate."""
+        """The simulated operator's turn: unload a done job, then load the oldest queued plate no deck holds."""
         held = self.ledger.held(device.device_id)
         if held and held.state == State.done:
             await self.unload(device, SIMULATED_OPERATOR)
-            held = None
-        queue = self.ledger.queued(device.device_id)
-        if not held and queue and self.ledger.plate(device.device_id) != queue[0].plate:
-            if self.ledger.where(queue[0].plate) is None:  # on another device: that one takes the job
-                await self.load(device, queue[0].plate, SIMULATED_OPERATOR)
+        elif held:
+            return
+        queue = self.ledger.queued(device.capability)
+        if any(j.plate == self.ledger.plate(device.device_id) for j in queue):
+            return  # the plate on the deck has work
+        plate = next((j.plate for j in queue if self.ledger.where(j.plate) is None), None)
+        if plate:
+            try:
+                await self.load(device, plate, SIMULATED_OPERATOR)
+            except Conflict:  # another device loaded it meanwhile: look again
+                self.wake[device.device_id].set()
 
     async def run_job(self, device: Device, job: Job) -> None:
-        job = self.ledger.update(job.job_id, state=State.preflight, started_at=now(), device_heartbeat_at=now())
+        job = self.ledger.update(job.job_id, device_id=device.device_id, state=State.preflight, started_at=now(),
+                                 device_heartbeat_at=now())
 
         def progress(*, state: State | None = None, stoppable: bool | None = None) -> None:
             fields = {"device_heartbeat_at": now()}
@@ -192,7 +202,7 @@ class Adapter:
             raise Conflict(f"job {held.job_id} is {held.state} on {device.device_id}: wait for it, or e-stop")
         self.ledger.unload(device.device_id, by)
         await device.backend.load(None)
-        self.wake[device.device_id].set()
+        self.wake_pool(device.capability)  # the plate may now go on another device
 
     def estop(self, device: Device, by: str) -> None:
         """Stop the running job now, past the stop boundary too: a person decided. The lock stays held."""
@@ -215,13 +225,13 @@ class Adapter:
                                      finished_at=job.finished_at.isoformat())
         else:
             job = self.ledger.update(job.job_id, state=State.voided, reason=f"voided by {why}", finished_at=job.finished_at.isoformat())
-        self.wake[job.device_id].set()
+        self.wake_pool(job.capability)
         return job
 
     def view(self, device: Device) -> DeviceView:
         return DeviceView(device_id=device.device_id, capability=device.capability,
                           simulated_operator=device.simulated_operator, plate=self.ledger.plate(device.device_id),
-                          held=self.ledger.held(device.device_id), queued=self.ledger.queued(device.device_id))
+                          held=self.ledger.held(device.device_id), queued=self.ledger.queued(device.capability))
 
 
 def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
@@ -265,16 +275,15 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
         },
     )
     async def submit(req: SubmitRequest, response: Response) -> Job:
-        """Queue a job, or return the existing one for this idempotency key."""
-        device = adapter.devices.get(req.capability)
-        if device is None:
+        """Queue a job for the capability's pool, or return the existing one for this idempotency key."""
+        if all(d.capability != req.capability for d in devices):
             raise HTTPException(404, f"no device for capability {req.capability!r}")
         try:
-            job, created = ledger.submit(req, device.device_id)
+            job, created = ledger.submit(req)
         except KeyConflict:
             raise HTTPException(409, f"idempotency key {req.idempotency_key} already used with a different payload")
         if created:
-            adapter.wake[device.device_id].set()
+            adapter.wake_pool(req.capability)
         else:
             response.status_code = 200
         return job
@@ -360,8 +369,9 @@ def contract_spec(app: FastAPI) -> dict:
 
 
 def main() -> FastAPI:
-    """`uvicorn --factory` entry point: one simulated liquid handler.
+    """`uvicorn --factory` entry point: a pool of simulated liquid handlers.
 
+    NF_LAB_DEVICES: how many (default 1), named fake-1… or plr-sim-1….
     NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation);
     with plr, NF_LAB_VISUALIZER=1 serves PyLabRobot's browser view of the deck.
     NF_LAB_SIMULATED_OPERATOR=1 or 0: default 1 for fake (tests, CI), 0 for plr,
@@ -371,14 +381,15 @@ def main() -> FastAPI:
     plr = os.environ.get("NF_LAB_BACKEND", "fake") == "plr"
     if plr:
         from .plr import PlrSimBackend  # imported only when used: PyLabRobot is heavy
-        device_id, backend = "plr-sim-1", PlrSimBackend(step=step, visualize=os.environ.get("NF_LAB_VISUALIZER") == "1")
+        prefix, backend = "plr-sim", lambda: PlrSimBackend(step=step, visualize=os.environ.get("NF_LAB_VISUALIZER") == "1")
     else:
-        device_id, backend = "fake-1", FakeBackend(step=step)
+        prefix, backend = "fake", lambda: FakeBackend(step=step)
     return create_app(
         os.environ.get("NF_LAB_LEDGER", "ledger.sqlite"),
-        [Device(device_id, "liquid-handling", backend,
+        [Device(f"{prefix}-{i}", "liquid-handling", backend(),
                 silent_after=float(os.environ.get("NF_LAB_SILENT_AFTER", "600")),
-                simulated_operator=os.environ.get("NF_LAB_SIMULATED_OPERATOR", "0" if plr else "1") == "1")],
+                simulated_operator=os.environ.get("NF_LAB_SIMULATED_OPERATOR", "0" if plr else "1") == "1")
+         for i in range(1, int(os.environ.get("NF_LAB_DEVICES", "1")) + 1)],
     )
 
 

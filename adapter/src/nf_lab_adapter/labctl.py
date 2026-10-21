@@ -155,7 +155,7 @@ def run(args: argparse.Namespace) -> int:
             "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
             "idempotency_key": key,
         })
-        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id']}: {job['state']}")
+        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id'] or args.capability + ' pool'}: {job['state']}")
         if not args.wait:
             print(json.dumps(job))
             return 0
@@ -165,7 +165,7 @@ def run(args: argparse.Namespace) -> int:
             job = client.call("GET", f"/jobs/{job['job_id']}")
             if (job["state"], job["stoppable"]) != seen:
                 seen = (job["state"], job["stoppable"])
-                log(f"{job['state']}, stoppable={job['stoppable']}")
+                log(f"{job['state']} on {job['device_id']}, stoppable={job['stoppable']}")
         write_outputs(outdir, job)
         if job["state"] != "done":
             log(f"{job['state']}: {job['reason']}")

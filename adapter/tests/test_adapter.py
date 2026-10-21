@@ -75,11 +75,11 @@ def test_plate_map_is_validated(tmp_path):
 def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
     import sqlite3
     from nf_lab_adapter.ledger import SCHEMA
-    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 2", "user_version = 1"))
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 3", "user_version = 1"))
     try:
         create_app(str(tmp_path / "old.sqlite"), [])
     except RuntimeError as e:
-        assert "ledger version 1, this adapter needs 2" in str(e)
+        assert "ledger version 1, this adapter needs 3" in str(e)
     else:
         raise AssertionError("old ledger accepted")
 
@@ -214,6 +214,27 @@ def test_a_plate_is_on_one_device_at_most(tmp_path):
         assert r.status_code == 409 and "plate P1 is on fake-1" in r.json()["detail"]
         assert load(c, "P1", "fake-1").status_code == 200  # loading it again where it is: fine
         assert load(c, "P1", "nope").status_code == 404
+
+
+def test_a_job_runs_on_the_pool_device_holding_its_plate(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.05)) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P2", "fake-2")
+        job = c.post("/jobs", json=req("k", plate="P2")).json()
+        assert job["device_id"] is None  # submit names a capability, not a device
+        assert wait(c, job["job_id"])["device_id"] == "fake-2"  # fake-1 is free but not ready: empty deck
+
+
+def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
+    devices = [Device(f"fake-{i}", "liquid-handling", FakeBackend(0.1), simulated_operator=True) for i in (1, 2)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        jobs = [c.post("/jobs", json=req(f"k{i}", plate=f"P{i}")).json() for i in range(1, 5)]
+        jobs = [wait(c, j["job_id"], lambda j: j["released_at"]) for j in jobs]
+        assert {j["state"] for j in jobs} == {"done"}
+        assert {j["device_id"] for j in jobs} == {"fake-1", "fake-2"}
+        for d in ("fake-1", "fake-2"):
+            runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
+            assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
 
 
 def test_unload_and_load_wait_for_a_running_job(tmp_path):
