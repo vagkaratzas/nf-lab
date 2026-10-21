@@ -79,12 +79,24 @@ The plate box on each free robot's row suggests the next plate to load.
 3. **Runs.** The robot takes the oldest queued job for the plate on its deck, one job at a time. Until the first liquid moves, the job can still be stopped safely and retried. After that it only runs to the end.
 4. **Unload.** When the job is done the plate stays on the deck, holding the robot, until a person presses *Unload*. Nothing else starts on that robot before then.
 
-When a job fails **after** liquid moved (`failed_in_protocol`), or someone pressed E-stop (`stopped`), the robot stays held, and a person checks the deck and presses one of:
+A job that fails after liquid moved, or is e-stopped, keeps the robot until a person deals with it: see the next section.
 
-- **Resolve as done**: the deck shows the step finished. The result is read off the deck, so do this before unloading.
-- **Void (run again)**: the material was thrown away. The same job may then run again.
+## When a job fails
 
-A job never retries by itself once liquid has moved.
+A job that fails **before** any liquid moved (`failed_preflight`) needs nobody: nothing was used, the robot is free again, and the pipeline retries it (exit `75`).
+
+A job that fails **after** liquid moved (`failed_in_protocol`), or that someone e-stopped (`stopped`), is never retried by itself. The robot stays held, the pipeline run ends (exit `1`; the other robots finish what they're on), and a person checks the deck and decides:
+
+| The deck shows | Press | Then |
+|---|---|---|
+| The step finished, fully or partly | **Resolve as done**, before unloading | Rerun the pipeline with `-resume`. The result is read off the deck, well by well, so wells that got no liquid read 0 µL. |
+| The material is spoiled, but the plate can be prepared again | **Void (run again)** | Prepare the plate again, load it, and rerun with `-resume`: the job runs again as a new attempt. |
+| The material is gone for good | **Void (run again)** | Remove **all of that plate's rows** from the plate map, then rerun with `-resume`. |
+
+Then press **Unload**.
+
+- **Don't remove only some wells of a plate.** A plate's job is identified by all its wells, so a trimmed plate is a new job: the robot would transfer the remaining wells again, including those that already got liquid. Resolve the plate as done instead, and let the wells read at 0 µL drop out downstream.
+- **The resolution travels with the data.** The job's `attempt` and `reason` (e.g. `resolved as done by ana; was failed_in_protocol: tip pickup failed`) are in the task's `provenance.json`. In `examples/plate_transfer` they are also columns of `samples.csv` and of each plate report. `samples.csv` leaves out wells read at 0 µL, while the plate report keeps every well.
 
 ## Submit a job by hand
 
