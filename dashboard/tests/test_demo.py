@@ -105,3 +105,32 @@ def test_manual_leaves_the_deck_to_you_and_rerun_keeps_the_ledger(tmp_path):
     assert "Rerun ended (exit 0)" in demo.log[-1]["text"]
     rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT state FROM jobs").fetchall()
     assert rows == [("done",)] * 4  # the ledger survived the restart: nothing ran twice
+
+
+def test_a_killed_dashboard_takes_its_adapter_with_it(tmp_path):
+    """SIGKILL skips shutdown(); the adapter must not stay behind holding the port."""
+    import os, signal, subprocess, sys, time
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    parent = subprocess.Popen([sys.executable, "-c", f"""
+import asyncio, time
+from pathlib import Path
+from nf_lab_dashboard.demo import Demo, Settings
+demo = Demo(Settings(nf_lab=Path({str(NF_LAB)!r}), port={port}, backend="fake", runs=Path({str(tmp_path)!r})))
+demo.run_dir = demo.s.runs / "x"
+asyncio.run(demo.fresh_adapter())
+print(demo.adapter.pid, flush=True)
+time.sleep(60)
+"""], stdout=subprocess.PIPE, text=True)
+    adapter = int(parent.stdout.readline())
+    parent.send_signal(signal.SIGKILL)
+    parent.wait()
+    for _ in range(50):
+        try:
+            os.kill(adapter, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    os.kill(adapter, signal.SIGKILL)
+    raise AssertionError("the adapter outlived the dashboard")

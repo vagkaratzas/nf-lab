@@ -13,6 +13,7 @@ Never imports adapter code: it starts the adapter as a process and talks HTTP.
 """
 
 import asyncio
+import ctypes
 import json
 import os
 import shutil
@@ -24,6 +25,17 @@ import urllib.request
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# shortcut: Linux only (prctl); elsewhere a killed dashboard can still leave its adapter holding the port
+_prctl = getattr(ctypes.CDLL(None), "prctl", None)
+
+
+def _die_with_dashboard() -> None:
+    """In the child: SIGTERM when the dashboard dies, also by SIGKILL or SIGHUP, when shutdown() never runs."""
+    _prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
+
+
+CHILD = {"start_new_session": True, "preexec_fn": _die_with_dashboard if _prctl else None}
 
 
 @dataclass
@@ -168,7 +180,7 @@ class Demo:
             str(python), "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory", "--port", str(self.s.port),
             "--app-dir", str(self.s.nf_lab / "adapter/src"),
             stdout=(self.run_dir / "adapter.log").open("w"), stderr=asyncio.subprocess.STDOUT, env=env,
-            start_new_session=True)  # Ctrl-C on the dashboard doesn't hit it first; shutdown() ends it
+            **CHILD)  # own session: Ctrl-C on the dashboard doesn't hit it first; shutdown() ends it
         for _ in range(240):
             if self.adapter.returncode is not None:
                 raise RuntimeError(f"the adapter exited: see {self.run_dir / 'adapter.log'}")
@@ -184,7 +196,7 @@ class Demo:
                "-output-dir", str(self.run_dir / "results"), *(["-resume"] if resume else [])]
         self.pipeline = await asyncio.create_subprocess_exec(
             *cmd, cwd=self.run_dir, env={**os.environ, "NF_LAB_ADAPTER": self.url},
-            stdout=(self.run_dir / "nextflow.out").open("a"), stderr=asyncio.subprocess.STDOUT, start_new_session=True)
+            stdout=(self.run_dir / "nextflow.out").open("a"), stderr=asyncio.subprocess.STDOUT, **CHILD)
 
     def pipeline_ended(self, _: Devices) -> bool:
         return self.pipeline is not None and self.pipeline.returncode is not None
