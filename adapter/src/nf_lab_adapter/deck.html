@@ -95,8 +95,12 @@ function render(devices, queue) {
 }
 
 async function refresh() {
-  try { const [d, q] = await Promise.all([fetch("devices"), fetch("queue")]); render(await d.json(), await q.json()); }
-  catch (e) { document.getElementById("error").textContent = "adapter unreachable"; }
+  let rs;
+  try { rs = await Promise.all([fetch("devices"), fetch("queue")]); }
+  catch (e) { document.getElementById("error").textContent = "adapter unreachable"; return; }
+  const bad = rs.find(r => !r.ok);  // e.g. a page newer than the running adapter
+  if (bad) { document.getElementById("error").textContent = `${bad.url}: HTTP ${bad.status}; restart the adapter?`; return; }
+  render(await rs[0].json(), await rs[1].json());
 }
 refresh();
 setInterval(refresh, 1000);
