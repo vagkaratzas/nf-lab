@@ -63,11 +63,18 @@ class PlrSimBackend:
         self.lh = lh
 
     async def load(self, plate: str | None) -> None:
-        _, src, buf, dst = self.deck
+        tips, src, buf, dst = self.deck
         for w in src.children + buf.children:
             w.tracker.set_volume(SAMPLE_UL if plate else 0)
         for w in dst.children:
             w.tracker.set_volume(0)
+        # Fresh tips, as a person setting up the deck would: a run stopped between aspirate and
+        # dispense puts its tips back in the rack still holding liquid, and they can't be dropped.
+        for channel in self.lh.head.values():
+            channel.clear()
+        for spot in tips.children:
+            if spot.tracker.has_tip:
+                spot.tracker.get_tip().tracker.set_volume(0)
 
     async def read_result(self, job: Job) -> dict:
         dst = self.deck[3]

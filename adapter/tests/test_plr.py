@@ -56,3 +56,18 @@ def test_preflight_failures_touch_nothing(tmp_path):
             job = wait(c, submit(c, key, protocol, n)["job_id"])
             assert (job["state"], job["stoppable"]) == ("failed_preflight", True), job
             c.post(f"/jobs/{job['job_id']}/release")
+
+
+def test_a_reloaded_deck_runs_after_an_estop_mid_transfer(tmp_path):
+    """The e-stop leaves liquid in the tips; the person's unload and load give fresh tips."""
+    with adapter(tmp_path / "ledger.sqlite", step=0.05) as c:
+        plate = wells("A1:S1", "G1:NC1:negative_control", "H1:BLK1:blank")
+        job = c.post("/jobs", json=req("k", "plate_transfer", wells=plate)).json()
+        wait(c, job["job_id"], lambda j: not j["stoppable"])  # liquid in the tips
+        c.post("/devices/plr-sim-1/estop")
+        assert wait(c, job["job_id"])["state"] == "stopped"
+        c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void"})
+        c.post("/devices/plr-sim-1/unload")  # the simulated operator loads P1 again for the retry
+        retry = wait(c, c.post("/jobs", json=req("k", "plate_transfer", wells=plate)).json()["job_id"])
+        assert (retry["state"], retry["attempt"]) == ("done", 2), retry["reason"]
+        assert {w["volume_ul"] for w in retry["result"]["wells"]} == {150.0}
