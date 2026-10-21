@@ -41,8 +41,15 @@ def wait(c: TestClient, job_id: str, until=lambda j: j["state"] in FINAL, timeou
         time.sleep(0.01)
 
 
+def void_and_unload(c: TestClient, job: dict) -> None:
+    """A person checks the deck after a failed or stopped job, presses Failed (void), then unloads."""
+    c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void"})
+    c.post(f"/jobs/{job['job_id']}/release")
+
+
 def run(c: TestClient, key: str, protocol: str = "ok") -> dict:
-    """Submit, wait for a final state, release the device (a no-op once the simulated operator has)."""
+    """Submit, wait for a final state, release the device (a no-op once the simulated operator has;
+    refused for a job failed in protocol or stopped, which a person resolves first)."""
     job = wait(c, c.post("/jobs", json=req(key, protocol)).json()["job_id"])
     c.post(f"/jobs/{job['job_id']}/release")
     return job
@@ -156,6 +163,7 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
             assert job["state"] == state and not job["stoppable"]
             repeat = c.post("/jobs", json=req(key, protocol))
             assert repeat.status_code == 200 and repeat.json()["job_id"] == job["job_id"]
+            void_and_unload(c, job)
 
 
 def test_preflight_failure_frees_the_device_without_release(tmp_path):
@@ -192,7 +200,7 @@ def test_silent_device_fails_and_frees_the_worker(tmp_path):
 
         time.sleep(0.2)
         assert c.get(f"/jobs/{nxt['job_id']}").json()["state"] == "queued"  # lock held for a human
-        c.post(f"/jobs/{silent['job_id']}/release")
+        void_and_unload(c, silent)
         assert wait(c, nxt["job_id"])["state"] == "done"  # the worker wasn't stuck on the silent job
 
 
@@ -304,16 +312,16 @@ def test_estop_stops_at_once_and_keeps_the_lock(tmp_path):
             job = wait(c, job["job_id"])
             assert (job["state"], job["reason"]) == ("stopped", "e-stop pressed by ana")
             assert c.get("/devices").json()[0]["held"]["job_id"] == job["job_id"]  # the operator leaves it for a person
-            c.post("/devices/fake-1/unload")
+            void_and_unload(c, job)
 
 
 def test_resolve_as_done_reads_the_deck_and_the_retry_collects_it(tmp_path):
     with adapter(tmp_path / "ledger.sqlite") as c:
-        job = run(c, "x", "protocol_fail")  # run() unloads it: resolving as done now can't read the deck
-        r = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "done"})
-        assert r.status_code == 409 and "void the job instead" in r.json()["detail"]
-
         job = wait(c, c.post("/jobs", json=req("y", "protocol_fail")).json()["job_id"])
+        for unload in (f"/jobs/{job['job_id']}/release", "/devices/fake-1/unload"):  # not before it's resolved
+            r = c.post(unload)
+            assert r.status_code == 409 and "resolve it first (Succeeded or Failed)" in r.json()["detail"]
+        assert c.get("/devices").json()[0]["status"] == "needs_person"
         assert c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "maybe"}).status_code == 422
         done = c.post(f"/jobs/{job['job_id']}/resolve",
                       json={"outcome": "done", "by": "ana", "note": "all wells filled"}).json()
@@ -332,6 +340,7 @@ def test_void_lets_the_key_run_again(tmp_path):
         assert c.post("/jobs", json=req("z", "protocol_fail")).json()["job_id"] == job["job_id"]  # at-most-once
         void = c.post(f"/jobs/{job['job_id']}/resolve", json={"outcome": "void", "by": "ana", "note": "binned"}).json()
         assert void["state"] == "voided" and void["reason"].startswith("voided by ana: binned; was failed_in_protocol")
+        assert wait(c, job["job_id"], lambda j: j["released_at"])  # voided: the simulated operator unloads it
         assert c.get("/lookup/z").json()["job_id"] == job["job_id"]
         retry = c.post("/jobs", json=req("z", "protocol_fail"))
         assert retry.status_code == 201 and retry.json()["attempt"] == 2

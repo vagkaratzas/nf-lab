@@ -220,7 +220,7 @@
             "description": "Not Found"
           },
           "409": {
-            "description": "Job not finished yet"
+            "description": "Job not finished yet, or failed in protocol or stopped and not resolved"
           },
           "422": {
             "description": "Validation Error",

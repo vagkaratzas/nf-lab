@@ -33,6 +33,7 @@ from .contract import FINAL, Job, State, SubmitRequest
 from .ledger import KeyConflict, Ledger, now
 
 SIMULATED_OPERATOR = "simulated operator"
+UNRESOLVED = {State.failed_in_protocol, State.stopped}  # a person resolves these before the unload
 
 
 @dataclass
@@ -71,8 +72,8 @@ class DeviceStatus(StrEnum):
     empty = "empty"  # nothing on the deck: load a plate
     ready = "ready"  # a plate on the deck, free: its queued jobs start here
     running = "running"
-    unload = "unload"  # done: a person takes the plate off
-    needs_person = "needs_person"  # failed in protocol or stopped: check the deck, resolve, unload
+    unload = "unload"  # done or voided: a person takes the plate off
+    needs_person = "needs_person"  # failed in protocol or stopped: check the deck, press Succeeded or Failed, unload
 
 
 class DeviceView(BaseModel):
@@ -118,9 +119,9 @@ class Adapter:
             await self.run_job(device, job)
 
     async def operate(self, device: Device) -> None:
-        """The simulated operator's turn: unload a done job, then load the oldest queued plate no deck holds."""
+        """The simulated operator's turn: unload a done or voided job, then load the oldest queued plate no deck holds."""
         held = self.ledger.held(device.device_id)
-        if held and held.state == State.done:
+        if held and held.state in (State.done, State.voided):
             await self.unload(device, SIMULATED_OPERATOR)
         elif held:
             return
@@ -216,6 +217,9 @@ class Adapter:
         """A person took the plate off: this is the release of the job holding the device."""
         if (held := self.ledger.held(device.device_id)) and held.state not in FINAL:
             raise Conflict(f"job {held.job_id} is {held.state} on {device.device_id}: wait for it, or e-stop")
+        if held and held.state in UNRESOLVED:  # unloaded unresolved, the job's key would stay stuck
+            raise Conflict(f"job {held.job_id} is {held.state} on {device.device_id}: check the deck and resolve it"
+                           " first (Succeeded or Failed), then unload")
         self.ledger.unload(device.device_id, by)
         await device.backend.load(None)
         self.wake_pool(device.capability)  # the plate may now go on another device
@@ -230,7 +234,7 @@ class Adapter:
 
     async def resolve(self, job: Job, r: Resolve) -> Job:
         """A person checked the deck after a failed job and records what really happened."""
-        if job.state not in (State.failed_in_protocol, State.stopped):
+        if job.state not in UNRESOLVED:
             raise Conflict(f"job {job.job_id} is {job.state}: only failed_in_protocol or stopped jobs are resolved")
         why = f"{r.by}{': ' + r.note if r.note else ''}; was {job.state}: {job.reason}"
         if r.outcome == "done":
@@ -251,8 +255,11 @@ class Adapter:
                                           f" ({h.state}{'' if h.stoppable else ', liquid moved'})")
         if h and h.state == State.done:
             return DeviceStatus.unload, f"done with plate {h.plate}: unload it"
+        if h and h.state == State.voided:
+            return DeviceStatus.unload, f"plate {h.plate} voided: unload it"
         if h:
-            return DeviceStatus.needs_person, f"{h.state} on plate {h.plate}: check the deck, resolve, then unload ({h.reason})"
+            return DeviceStatus.needs_person, (f"{h.state} on plate {h.plate}: check the deck, press Succeeded or Failed,"
+                                               f" then unload ({h.reason})")
         status, text = (DeviceStatus.ready, f"ready for plate {plate}") if plate else (DeviceStatus.empty, "empty deck: load a plate")
         if (last := self.ledger.last(device.device_id)) and last.state == State.failed_preflight:
             text += f"; last job (plate {last.plate}) failed pre-flight: {last.reason}"
@@ -373,7 +380,7 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
 
     @app.post(
         "/jobs/{job_id}/release", operation_id="release", response_model=Job,
-        responses={404: {}, 409: {"description": "Job not finished yet"}},
+        responses={404: {}, 409: {"description": "Job not finished yet, or failed in protocol or stopped and not resolved"}},
     )
     async def release(job_id: str) -> Job:
         """The finished plate is off the deck: unlock the device. Called by the person who unloads it. Idempotent."""

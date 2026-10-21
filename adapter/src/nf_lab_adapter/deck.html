@@ -24,7 +24,8 @@
                   background: var(--btn); color: var(--fg); }
   button { cursor: pointer; }
   button:disabled { opacity: .4; cursor: default; }
-  button.stop { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  button.stop, button.failed { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  button.succeeded { border-color: var(--ok); color: var(--ok); font-weight: 600; }
   input { min-width: 0; width: 9em; }
   ul { margin: 6px 0 0; padding-left: 20px; }
   code { font-size: 13px; }
@@ -38,19 +39,15 @@
 <header>
   <h1>Deck controls</h1>
   <span class="muted">what a person does at each robot</span>
-  <label class="muted">I am <input id="by" value="operator" aria-label="Operator name"></label>
 </header>
 <div id="error" role="alert"></div>
 <section id="queue"></section>
 <main id="devices"><p class="muted">Loading…</p></main>
 <script>
-const by = document.getElementById("by");
-try { by.value = localStorage.getItem("deck.by") || by.value; } catch (e) {}
-by.onchange = () => { try { localStorage.setItem("deck.by", by.value); } catch (e) {} };
 
 async function call(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ by: by.value || "operator", ...body }) });
+                                body: JSON.stringify({ by: "operator", ...body }) });
   document.getElementById("error").textContent = r.ok ? "" : (await r.json()).detail;
   refresh();
 }
@@ -61,7 +58,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<":
 
 function render(devices, queue) {
   const main = document.getElementById("devices");
-  const typing = document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement !== by;
+  const typing = document.activeElement && document.activeElement.tagName === "INPUT";
   if (typing) return;  // don't wipe what someone is typing
   document.getElementById("queue").innerHTML = `<h2>Queue</h2>` + (queue.length ? `<ul>${queue.map(j =>
     `<li><code>${esc(j.protocol)}</code> plate <b>${esc(j.plate)}</b>, ${j.wells.length} wells: ${esc(j.waiting_for)}</li>`).join("")}</ul>`
@@ -82,13 +79,13 @@ function render(devices, queue) {
         <input id="plate-${id}" list="plates-${id}" placeholder="plate ID" aria-label="Plate to load on ${id}" value="${esc(suggest)}">
         <datalist id="plates-${id}">${toLoad.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
         <button ${h ? "disabled" : ""} onclick="call('devices/${id}/load', {plate: document.getElementById('plate-${id}').value})">Load plate + confirm deck</button>
-        <button ${running || !d.plate ? "disabled" : ""} onclick="call('devices/${id}/unload')">Unload</button>
+        <button ${running || failed || !d.plate ? "disabled" : ""} title="${failed ? "Press Succeeded or Failed first" : ""}" onclick="call('devices/${id}/unload')">Unload</button>
         <button class="stop" ${running ? "" : "disabled"} onclick="call('devices/${id}/estop')">E-stop</button>
       </div>
       ${failed ? `<div class="row">
         <input id="note-${id}" placeholder="what the deck shows" aria-label="Note">
-        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'done', note: document.getElementById('note-${id}').value})">Resolve as done</button>
-        <button onclick="call('jobs/${h.job_id}/resolve', {outcome: 'void', note: document.getElementById('note-${id}').value})">Void (run again)</button>
+        <button class="succeeded" title="The deck shows the step finished: the result is read off the deck" onclick="call('jobs/${h.job_id}/resolve', {outcome: 'done', note: document.getElementById('note-${id}').value})">Succeeded</button>
+        <button class="failed" title="The material is thrown away: the job may run again" onclick="call('jobs/${h.job_id}/resolve', {outcome: 'void', note: document.getElementById('note-${id}').value})">Failed</button>
       </div>` : ""}
     </section>`;
   }).join("") || `<p class="muted">No devices.</p>`;
