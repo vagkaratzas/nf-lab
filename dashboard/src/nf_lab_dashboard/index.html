@@ -54,6 +54,24 @@
   h2 button { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6px;
               border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .error { color: var(--bad); }
+  /* control panel */
+  #demo { flex: none; margin-bottom: 12px; display: grid; gap: 8px 16px; grid-template-columns: auto minmax(0, 1fr);
+          align-items: start; }
+  #demo .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #demo button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line);
+                 background: var(--bg); color: var(--fg); cursor: pointer; }
+  #demo button:disabled { opacity: .4; cursor: default; }
+  #demo button.active { border-color: var(--info); color: var(--info); font-weight: 600; }
+  #demo-status { color: var(--muted); font-size: 13px; }
+  .bubble { border-radius: 10px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--line); font-size: 15px; }
+  .bubble.person { border-color: var(--warn); }
+  .bubble.person::before { content: "👤 "; }
+  .bubble.error { border-color: var(--bad); }
+  #demo details { grid-column: 1 / -1; font-size: 13px; }
+  #demo ol { max-height: 22vh; overflow: auto; margin: 4px 0 0; padding-left: 22px; }
+  #demo li.person { color: var(--warn); } #demo li.error { color: var(--bad); }
+  .robot.acting { outline: 3px solid var(--warn); outline-offset: 2px; transition: outline-color .3s; }
+  @media (max-width: 1100px) { #demo { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body>
@@ -62,6 +80,17 @@
   <span id="run" class="muted"></span>
   <span id="where" class="muted"></span>
 </header>
+<section id="demo" aria-label="Demos">
+  <div class="controls">
+    <span id="demo-buttons"></span>
+    <button id="demo-pp" disabled>⏸ Pause</button>
+    <button id="demo-stop" disabled onclick="demoCall('stop')">■ Stop</button>
+    <span id="demo-status">pick a demo</span>
+  </div>
+  <div id="bubble" class="bubble muted" aria-live="polite">Each demo starts fresh (a new ledger, two simulated robots,
+    empty decks), runs the example pipeline and plays the person at the deck. Pause holds the next person step.</div>
+  <details><summary>Steps so far</summary><ol id="steps"></ol></details>
+</section>
 <main>
   <section id="nf"><h2>1 · Nextflow <small>tasks from .nextflow.log</small></h2><div class="scroll" id="nf-body"></div></section>
   <section id="adapter"><h2>2 · Adapter <small>calls it received</small></h2><div class="scroll" id="adapter-body"></div></section>
@@ -136,6 +165,47 @@ function robots(data) {
   }
 }
 
+let demoBuilt = false, lastHighlight = 0;
+function demo(d) {
+  const bar = document.getElementById("demo-buttons"), running = d.status === "running";
+  if (!demoBuilt) {
+    bar.innerHTML = d.scenarios.map(s => `<button class="scenario" data-id="${esc(s.id)}" title="${esc(s.blurb)}"
+      onclick="demoCall('start/${esc(s.id)}')">▶ ${esc(s.title)}</button>`).join(" ");
+    demoBuilt = true;
+  }
+  bar.querySelectorAll("button.scenario").forEach(b => { b.disabled = running; b.classList.toggle("active", b.dataset.id === d.active); });
+  const pp = document.getElementById("demo-pp");
+  pp.disabled = !running;
+  pp.textContent = d.paused ? "▶ Play" : "⏸ Pause";
+  pp.onclick = () => demoCall(d.paused ? "play" : "pause");
+  document.getElementById("demo-stop").disabled = !running;
+  document.getElementById("demo-status").textContent = d.active ? `${d.active}: ${d.paused ? "paused" : d.status}` : "pick a demo";
+  const last = d.log[d.log.length - 1];
+  if (last) {
+    const bubble = document.getElementById("bubble");
+    bubble.className = `bubble ${last.kind}`;
+    bubble.textContent = last.text;
+  }
+  document.getElementById("steps").innerHTML = d.log.map(e =>
+    `<li class="${esc(e.kind)}"><span class="muted">${esc(e.t)}</span> ${e.kind === "person" ? "👤 " : ""}${esc(e.text)}</li>`).join("");
+  if (d.highlight && d.highlight.n !== lastHighlight) {  // flash the robot the person just acted on
+    lastHighlight = d.highlight.n;
+    const card = document.getElementById(`robot-${d.highlight.device}`);
+    if (card) { card.classList.add("acting"); setTimeout(() => card.classList.remove("acting"), 2500); }
+  }
+}
+
+async function demoCall(path) {
+  const r = await fetch(`api/demo/${path}`, { method: "POST" });
+  const body = await r.json();
+  if (!r.ok) {
+    const bubble = document.getElementById("bubble");
+    bubble.className = "bubble error"; bubble.textContent = body.detail;
+    return;
+  }
+  demo(body);
+}
+
 async function poll() {
   const parts = [["nf-body", "api/nextflow", nextflow], ["adapter-body", "api/adapter", adapter], ["ledger-body", "api/ledger", ledger]];
   await Promise.all(parts.map(async ([id, path, render]) => {
@@ -145,6 +215,11 @@ async function poll() {
   }));
   try { robots(await get("api/robots")); }
   catch (e) { document.getElementById("robots-body").innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+  try {
+    demo(await get("api/demo"));
+    const c = await get("api/config");  // a demo moves the panels to its own ledger and log
+    document.getElementById("where").textContent = `adapter ${c.adapter} · log ${c.nextflow_log}`;
+  } catch (e) { document.getElementById("demo-status").textContent = e.message; }
 }
 
 function reloadFrames() {

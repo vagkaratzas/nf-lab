@@ -9,9 +9,26 @@ A live view of one lab run, for demos. It shows, refreshed every second:
 
 Next to them: the adapter's deck page, so you can load and unload plates from the dashboard.
 
-The dashboard only reads: it opens the ledger read-only and never imports adapter code.
+The panels only read: they open the ledger read-only. The demo bar is the one part that acts, and only as a person would: it starts processes and presses deck buttons through the adapter's API. Nothing imports adapter code.
 
-## Run
+## Demos
+
+The bar at the top runs scripted demos. Each one starts fresh: it starts its own adapter (a new ledger, two simulated PyLabRobot robots, empty decks), runs `examples/plate_transfer`, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
+
+- **Pool**: four plates over two robots; the operator loads plates as robots free up. About 2 minutes.
+- **E-stop**: the operator e-stops one robot mid-plate. The other robot finishes (`errorStrategy 'finish'`), the run ends failed; the operator presses Failed and unloads; a `-resume` rerun runs only that plate again, as attempt 2. About 3 minutes.
+
+**Pause** holds the demo before its next narration or person step; Nextflow and the robots keep going. **Stop** ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and leaves the adapter up.
+
+For the demos, start only the dashboard: they need port 8000 free, so stop any adapter you started yourself. Each demo keeps its ledger, logs and results in `build/demo/<demo>/`, and the panels read from there once a demo has run. `nextflow` must be on `PATH` (or set `NXF_CMD`), with the plugin installed (`make install`).
+
+```bash
+cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080
+```
+
+Settings: `NF_LAB_DEMO_STEP` (seconds per robot step, default 1.0), `NF_LAB_DEMO_BACKEND` (`plr`, or `fake` without deck views).
+
+## Run with your own adapter
 
 Three shells, from the nf-lab root:
 

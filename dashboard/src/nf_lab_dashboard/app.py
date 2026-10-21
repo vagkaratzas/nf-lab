@@ -10,6 +10,9 @@ Four panels, each one JSON endpoint the page polls every second:
 - /api/robots    each robot's status and lock, from the adapter's GET /devices
 
 It never imports adapter code: it reads the adapter's files and its HTTP API.
+The control panel (/api/demo, demo.py) runs scripted scenarios: it starts its own
+adapter and the example pipeline and presses deck buttons through the operator API.
+While a scenario has run, the panels read that scenario's ledger and log.
 Settings (environment):
   NF_LAB_ADAPTER        adapter URL (default http://127.0.0.1:8000)
   NF_LAB_LEDGER         the adapter's ledger (default adapter/ledger.sqlite); the
@@ -21,12 +24,16 @@ import json
 import os
 import re
 import sqlite3
+import urllib.parse
 import urllib.request
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+
+from .demo import SCENARIOS, Busy, Demo, Settings
 
 NF_LAB = Path(__file__).parents[3]  # dashboard/src/nf_lab_dashboard/app.py -> nf-lab
 
@@ -101,7 +108,8 @@ def adapter_calls(log: Path, ledger: Path, limit: int = 40) -> list[dict]:
         target = e.get("location", e["path"])
         job = target.split("/")[2] if target.startswith("/jobs/") else None
         who = f"plate {plates[job]}" if job in plates else target.split("/")[2] if target.startswith("/devices/") else ""
-        call = {"time": e["t"][11:19], "op": op, "who": who, "http": e["status"], "count": 1}
+        local = datetime.fromisoformat(e["t"]).astimezone().strftime("%H:%M:%S")  # the adapter logs UTC
+        call = {"time": local, "op": op, "who": who, "http": e["status"], "count": 1}
         if op == "status" and (row := polling.get(who)) and row["http"] == e["status"]:
             row.update(time=call["time"], count=row["count"] + 1)
             continue
@@ -133,11 +141,24 @@ def robots(adapter: str, ledger: Path) -> dict:
 
 def main() -> FastAPI:
     adapter = os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000").rstrip("/")
-    ledger = Path(os.environ.get("NF_LAB_LEDGER", NF_LAB / "adapter/ledger.sqlite")).resolve()
-    nextflow_log = Path(os.environ.get("NF_LAB_NEXTFLOW_LOG", NF_LAB / "examples/plate_transfer/.nextflow.log")).resolve()
-    request_log = ledger.with_suffix(".requests.jsonl")
+    default_ledger = Path(os.environ.get("NF_LAB_LEDGER", NF_LAB / "adapter/ledger.sqlite")).resolve()
+    default_log = Path(os.environ.get("NF_LAB_NEXTFLOW_LOG", NF_LAB / "examples/plate_transfer/.nextflow.log")).resolve()
+    demo = Demo(Settings(nf_lab=NF_LAB, port=urllib.parse.urlparse(adapter).port or 8000,
+                         backend=os.environ.get("NF_LAB_DEMO_BACKEND", "plr"),
+                         step=float(os.environ.get("NF_LAB_DEMO_STEP", "1.0"))))
 
-    app = FastAPI(title="nf-lab dashboard")
+    def paths() -> tuple[Path, Path]:
+        """The ledger and Nextflow log the panels read: the demo's while one has run, else the settings'."""
+        if demo.run_dir:
+            return demo.run_dir / "ledger.sqlite", demo.run_dir / ".nextflow.log"
+        return default_ledger, default_log
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        await demo.shutdown()  # the adapter and pipeline the control panel started
+
+    app = FastAPI(title="nf-lab dashboard", lifespan=lifespan)
 
     @app.get("/", include_in_schema=False)
     async def page() -> HTMLResponse:
@@ -145,18 +166,21 @@ def main() -> FastAPI:
 
     @app.get("/api/config")
     async def config() -> dict:
-        return {"adapter": adapter, "ledger": str(ledger), "nextflow_log": str(nextflow_log)}
+        ledger, log = paths()
+        return {"adapter": adapter, "ledger": str(ledger), "nextflow_log": str(log)}
 
     @app.get("/api/nextflow")
     async def nextflow() -> dict:
-        return nextflow_tasks(nextflow_log)
+        return nextflow_tasks(paths()[1])
 
     @app.get("/api/adapter")
     async def calls() -> list[dict]:
-        return adapter_calls(request_log, ledger)
+        ledger = paths()[0]
+        return adapter_calls(ledger.with_suffix(".requests.jsonl"), ledger)
 
     @app.get("/api/ledger")
     async def jobs() -> list[dict] | dict:
+        ledger = paths()[0]
         hint = "set NF_LAB_LEDGER to the file the adapter uses (the adapter's NF_LAB_LEDGER, as an absolute path)"
         if not ledger.exists():
             return {"error": f"no ledger at {ledger}: {hint}"}
@@ -169,6 +193,37 @@ def main() -> FastAPI:
 
     @app.get("/api/robots")
     def devices() -> dict:  # sync: the adapter call blocks, so FastAPI runs it in a thread
-        return robots(adapter, ledger)
+        return robots(adapter, paths()[0])
+
+    # --- control panel: the only part that acts, and only as a person at a terminal and a deck would ---
+
+    @app.get("/api/demo")
+    async def demo_state() -> dict:
+        return demo.view()
+
+    @app.post("/api/demo/start/{scenario}")
+    async def demo_start(scenario: str) -> dict:
+        if scenario not in SCENARIOS:
+            raise HTTPException(404, f"no scenario {scenario!r}")
+        try:
+            demo.start(scenario)
+        except Busy as e:
+            raise HTTPException(409, str(e))
+        return demo.view()
+
+    @app.post("/api/demo/pause")
+    async def demo_pause() -> dict:
+        demo.pause()
+        return demo.view()
+
+    @app.post("/api/demo/play")
+    async def demo_play() -> dict:
+        demo.play()
+        return demo.view()
+
+    @app.post("/api/demo/stop")
+    async def demo_stop() -> dict:
+        await demo.stop()
+        return demo.view()
 
     return app
