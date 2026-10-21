@@ -1,7 +1,7 @@
 # errorStrategy 'finish': a failure ends the run without stopping the robots. One robot,
 # two plates: DRY (P1) fails while WET (P2) is queued on the robot; P2's job still runs
 # to done (with 'terminate' it would be safe-stopped), and nothing new starts after the failure.
-NF_LAB_STEP=0.3 start_adapter
+NF_LAB_STEP=2 start_adapter  # P2's 6 s on the robot outlast DRY (P1)'s failure on a slow runner
 fails nf --plates 2 --fail_dry true
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done'") == 2 ]]
 [[ $(sql "SELECT count(*) FROM jobs WHERE state != 'done'") == 0 ]]

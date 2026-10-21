@@ -4,8 +4,9 @@ nf_bg --plates 2
 until_sql "SELECT count(*) = 1 FROM jobs WHERE stoppable = 0"
 kill -TERM $NF_PID
 fails wait $NF_PID
-[[ $(sql "SELECT count(*) FROM jobs WHERE stoppable = 0 AND stop_requested = 1") == 1 ]]  # running, not killed
-[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'failed_preflight' AND reason = 'safe_stop'") == 1 ]]  # the queued one
+# Nextflow exits without waiting for labctl's safe_stop (the wrapper's TERM trap doesn't wait): wait for it
+until_sql "SELECT count(*) = 1 FROM jobs WHERE stoppable = 0 AND stop_requested = 1"  # running, not killed
+until_sql "SELECT count(*) = 1 FROM jobs WHERE state = 'failed_preflight' AND reason = 'safe_stop'"  # the queued one
 nf --plates 2 -resume
 [[ $(sql "SELECT count(*) FROM jobs WHERE stoppable = 0") == 2 ]]  # no third physical run...
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND attempt = 1 AND released_at IS NOT NULL") == 1 ]]  # ...the first one reattached
