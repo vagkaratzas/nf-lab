@@ -76,3 +76,32 @@ def test_a_person_step_whose_moment_passed_presses_nothing(tmp_path):
     moved_on = asyncio.run(demo.person("presses E-stop", "r1", "POST", "/devices/r1/estop",
                                        still=lambda ds: ds[0]["status"] == "running"))
     assert moved_on is None and pressed == [] and demo.log == []
+
+
+def test_manual_leaves_the_deck_to_you_and_rerun_keeps_the_ledger(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    stub = tmp_path / "nextflow"
+    stub.write_text(STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
+    stub.chmod(0o755)
+    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.05, nextflow=[str(stub)], beat=0, tick=0.1,
+                         runs=tmp_path / "runs"))
+
+    async def go():
+        demo.start("manual")
+        while demo.pipeline is None:
+            await asyncio.sleep(0.05)
+        assert demo.log and all(e["kind"] == "say" for e in demo.log)  # the script presses nothing
+        await demo.serve_until(demo.pipeline_ended)  # the test plays you, at the deck
+        await asyncio.wait_for(asyncio.shield(demo.task), 30)
+        assert demo.status == "finished" and demo.view()["can_rerun"]
+        await demo._end(demo.adapter, 10)  # e.g. the dashboard restarted: Rerun brings the adapter back
+        demo.rerun()
+        await asyncio.wait_for(asyncio.shield(demo.task), 60)
+        await demo.shutdown()
+    asyncio.run(go())
+    assert demo.status == "finished", demo.log
+    assert "Rerun ended (exit 0)" in demo.log[-1]["text"]
+    rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT state FROM jobs").fetchall()
+    assert rows == [("done",)] * 4  # the ledger survived the restart: nothing ran twice

@@ -63,7 +63,8 @@ class Demo:
     def view(self) -> dict:
         return {"scenarios": [{"id": k, "title": t, "blurb": b} for k, (t, b, _) in SCENARIOS.items()],
                 "active": self.name, "status": self.status,
-                "log": self.log[-60:], "highlight": self.highlight}
+                "log": self.log[-60:], "highlight": self.highlight,
+                "can_rerun": bool(self.run_dir and (self.run_dir / "ledger.sqlite").exists())}
 
     def start(self, name: str) -> None:
         if self.task and not self.task.done():
@@ -71,6 +72,15 @@ class Demo:
         self.name, self.status, self.log, self.highlight = name, "running", [], None
         self.run_dir = (self.s.runs or self.s.nf_lab / "build" / "demo") / name
         self.task = asyncio.create_task(self._run(SCENARIOS[name][2]))
+
+    def rerun(self) -> None:
+        """Run the pipeline again with -resume in the last demo's folder, on its ledger."""
+        if self.task and not self.task.done():
+            raise Busy(f"{self.name} is running: stop it first")
+        if not self.view()["can_rerun"]:
+            raise Busy("nothing to rerun: start a demo first")
+        self.status = "running"
+        self.task = asyncio.create_task(self._run(rerun))
 
     async def _run(self, scenario: Callable[["Demo"], Awaitable[None]]) -> None:
         try:
@@ -133,8 +143,14 @@ class Demo:
                 return json.load(r)
         return await asyncio.to_thread(call)
 
-    async def fresh_adapter(self) -> None:
-        """Stop the adapter this panel started, wipe the scenario's folder, start a new adapter on it."""
+    async def ensure_adapter(self) -> None:
+        """The adapter this panel started, still up; else start it again on the folder's ledger, as it is."""
+        if self.adapter and self.adapter.returncode is None:
+            return
+        await self.fresh_adapter(wipe=False)
+
+    async def fresh_adapter(self, wipe: bool = True) -> None:
+        """Stop the adapter this panel started, wipe the scenario's folder (new ledger), start a new adapter on it."""
         await self._end(self.adapter, timeout=10)
         with socket.socket() as sock:
             if sock.connect_ex(("127.0.0.1", self.s.port)) == 0:
@@ -142,8 +158,9 @@ class Demo:
         python = self.s.nf_lab / "adapter/.venv/bin/python"
         if not python.exists():
             raise RuntimeError(f"no adapter environment at {python}: run `uv sync` in adapter/")
-        shutil.rmtree(self.run_dir, ignore_errors=True)
-        self.run_dir.mkdir(parents=True)
+        if wipe:
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+        self.run_dir.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": "2", "NF_LAB_STEP": str(self.s.step),
                "NF_LAB_SIMULATED_OPERATOR": "0", "NF_LAB_VISUALIZER": "1" if self.s.backend == "plr" else "0",
                "NF_LAB_LEDGER": str(self.run_dir / "ledger.sqlite")}
@@ -275,7 +292,28 @@ async def estop(demo: Demo) -> None:
                    "attempt 1 voided after the e-stop, attempt 2 done.")
 
 
+async def manual(demo: Demo) -> None:
+    await demo.say("Manual: a fresh ledger, two robots with empty decks. Starting the pipeline.")
+    await demo.fresh_adapter()
+    await demo.start_pipeline()
+    await demo.say("Your turn, you are the operator. The queue in the deck controls says which plate each job waits "
+                   "for: load plates, unload done ones, try E-stop, then Succeeded or Failed.")
+    await demo.pipeline.wait()
+    await demo.say(f"Run ended (exit {demo.pipeline.returncode}). ↻ Rerun runs it again with -resume on the same "
+                   "ledger; Manual starts over.")
+
+
+async def rerun(demo: Demo) -> None:
+    await demo.ensure_adapter()
+    await demo.say("Rerun with -resume on the same ledger: Nextflow reuses the finished tasks and the ledger returns "
+                   "done jobs, so only plates that may run again (voided, or never run) reach a robot.")
+    await demo.start_pipeline(resume=True)
+    await demo.pipeline.wait()
+    await demo.say(f"Rerun ended (exit {demo.pipeline.returncode}).")
+
+
 SCENARIOS: dict[str, tuple[str, str, Callable[[Demo], Awaitable[None]]]] = {
     "pool": ("Pool", "Four plates over two robots; the operator loads and unloads plates", pool),
     "estop": ("E-stop", "A person e-stops one robot mid-plate; Failed, Unload, then -resume reruns only that plate", estop),
+    "manual": ("Manual", "A fresh ledger, empty decks and the pipeline running: you are the operator", manual),
 }

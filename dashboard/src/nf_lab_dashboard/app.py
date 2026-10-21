@@ -212,6 +212,14 @@ def main() -> FastAPI:
             raise HTTPException(409, str(e))
         return demo.view()
 
+    @app.post("/api/demo/rerun")
+    async def demo_rerun() -> dict:
+        try:
+            demo.rerun()
+        except Busy as e:
+            raise HTTPException(409, str(e))
+        return demo.view()
+
     @app.post("/api/demo/stop")
     async def demo_stop() -> dict:
         await demo.stop()
