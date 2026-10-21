@@ -1,5 +1,7 @@
 # nf-lab plugin
 
+The device adapter (and its deck page and `labctl`) has its own guide: [adapter/README.md](adapter/README.md).
+
 ## Building
 
 To build the plugin:
