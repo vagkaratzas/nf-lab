@@ -1,7 +1,8 @@
 nextflow.enable.types = true
 
 // Wet step: one plate_read run on a plate reader, through the device adapter.
-// Reading moves no liquid: a failed or stopped read is retryable (exit 75).
+// Reading moves no liquid: a failed or safe-stopped read is retryable (exit 75);
+// an e-stopped one waits for a person's Failed, then reruns with -resume.
 process PLATE_READ {
     tag "${plate.id}"
     label 'process_wet'

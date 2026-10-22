@@ -132,7 +132,8 @@ class PlrSimBackend:
 class PlrReaderBackend:
     """`plate_read`: read the absorbance of each plate-map well. A person's load puts a
     plate in the reader, an unload takes it out. Reading moves no liquid, so the job
-    never crosses the stop boundary: a failed or stopped read can run again."""
+    never crosses the stop boundary: a failed or safe-stopped read can run again
+    (an e-stopped one after a person's Failed)."""
 
     PROTOCOLS = {"plate_read"}
 
