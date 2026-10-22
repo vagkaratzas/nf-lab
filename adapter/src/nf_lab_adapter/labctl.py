@@ -153,11 +153,12 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         job = client.call("POST", "/jobs", {
-            "capability": args.capability, "protocol": args.protocol,
+            "capability": args.capability, "queue": args.queue, "protocol": args.protocol,
             "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
             "idempotency_key": key,
         })
-        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id'] or args.capability + ' pool'}: {job['state']}")
+        pool = args.capability + (f" pool, queue {args.queue}" if args.queue else " pool")
+        log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id'] or pool}: {job['state']}")
         if not args.wait:
             print(json.dumps(job))
             return 0
@@ -186,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="submit (or find) a job and wait for it")
     r.add_argument("--capability", required=True)
+    r.add_argument("--queue", help="only this queue's devices may take the job (Nextflow's queue directive); "
+                                   "not part of the key")
     r.add_argument("--protocol", required=True)
     r.add_argument("--protocol-version", required=True)
     r.add_argument("--plate", required=True, help="plate ID from the plate map")

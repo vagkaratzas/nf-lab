@@ -42,6 +42,10 @@ class Well(BaseModel):
 
 class SubmitRequest(BaseModel):
     capability: str = Field(min_length=1, examples=["liquid-handling"])
+    queue: str | None = Field(
+        None, min_length=1, examples=["opentrons"],
+        description="Only the capability's devices in this queue may take the job (Nextflow's `queue` directive); "
+                    "None: any of them. Routing, not identity: outside the idempotency key")
     protocol: str = Field(min_length=1)
     protocol_version: str = Field(min_length=1)
     plate: str = Field(min_length=1, description="Plate ID from the plate map")

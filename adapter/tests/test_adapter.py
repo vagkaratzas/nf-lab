@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from nf_lab_adapter.app import Device, contract_spec, create_app
+from nf_lab_adapter.app import Device, contract_spec, create_app, device_specs
 from nf_lab_adapter.backends import FakeBackend
 
 FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped", "voided"}
@@ -81,12 +81,12 @@ def test_plate_map_is_validated(tmp_path):
 
 def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
     import sqlite3
-    from nf_lab_adapter.ledger import SCHEMA
-    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 3", "user_version = 1"))
+    from nf_lab_adapter.ledger import SCHEMA, VERSION
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace(f"user_version = {VERSION}", "user_version = 1"))
     try:
         create_app(str(tmp_path / "old.sqlite"), [])
     except RuntimeError as e:
-        assert "ledger version 1, this adapter needs 3" in str(e)
+        assert f"ledger version 1, this adapter needs {VERSION}" in str(e)
     else:
         raise AssertionError("old ledger accepted")
 
@@ -265,6 +265,49 @@ def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
         for d in ("fake-1", "fake-2"):
             runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
             assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
+
+
+def test_a_queue_routes_a_job_to_its_robots(tmp_path):
+    devices = [Device(f"{q}-1", "liquid-handling", FakeBackend(0.05), queue=q) for q in ("opentrons", "hamilton")]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "opentrons-1")
+        job = c.post("/jobs", json=req("k", queue="hamilton")).json()
+        assert (job["queue"], job["device_id"]) == ("hamilton", None)
+        assert c.get("/queue").json()[0]["waiting_for"] == \
+            "plate P1 is on opentrons-1, which isn't in queue hamilton: unload it there"
+        c.post("/devices/opentrons-1/unload")
+        load(c, "P1", "hamilton-1")
+        assert wait(c, job["job_id"])["device_id"] == "hamilton-1"
+
+        load(c, "P2", "opentrons-1")  # no queue: any robot of the capability
+        assert wait(c, c.post("/jobs", json=req("k2", plate="P2")).json()["job_id"])["device_id"] == "opentrons-1"
+
+        r = c.post("/jobs", json=req("k3", queue="tecan"))  # a typo fails at once instead of waiting forever
+        assert r.status_code == 404 and "queue 'tecan'" in r.json()["detail"]
+        # routing, not identity: the same key in another queue is the same job
+        assert c.post("/jobs", json=req("k", queue="opentrons")).json()["job_id"] == job["job_id"]
+
+
+def test_the_simulated_operator_loads_a_plate_only_where_its_queue_runs(tmp_path):
+    devices = [Device(f"{q}-1", "liquid-handling", FakeBackend(0.05), simulated_operator=True, queue=q)
+               for q in ("opentrons", "hamilton")]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        jobs = [c.post("/jobs", json=req(f"k{i}", plate=f"P{i}", queue="hamilton")).json() for i in (1, 2)]
+        assert {wait(c, j["job_id"], lambda j: j["released_at"])["device_id"] for j in jobs} == {"hamilton-1"}
+
+
+def test_device_specs():
+    assert device_specs("2", "fake") == [("fake-1", "liquid-handling", None), ("fake-2", "liquid-handling", None)]
+    assert device_specs("liquid-handling/opentrons:2, liquid-handling/hamilton:1,thermocycling:1", "fake") == [
+        ("opentrons-1", "liquid-handling", "opentrons"), ("opentrons-2", "liquid-handling", "opentrons"),
+        ("hamilton-1", "liquid-handling", "hamilton"), ("thermocycling-1", "thermocycling", None)]
+    for bad in ("liquid-handling", "liquid-handling:1,liquid-handling:1"):
+        try:
+            device_specs(bad, "fake")
+        except ValueError as e:
+            assert "NF_LAB_DEVICES" in str(e)
+        else:
+            raise AssertionError(bad)
 
 
 def test_devices_and_queue_tell_a_newcomer_what_to_do(tmp_path):

@@ -24,7 +24,7 @@ process PLATE_TRANSFER {
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
     """
     labctl run --wait \\
-        --capability ${task.hints['lab/capability']} \\
+        --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol plate_transfer \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\

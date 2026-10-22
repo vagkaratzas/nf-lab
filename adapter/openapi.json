@@ -261,6 +261,22 @@
               "liquid-handling"
             ]
           },
+          "queue": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue",
+            "description": "Only the capability's devices in this queue may take the job (Nextflow's `queue` directive); None: any of them. Routing, not identity: outside the idempotency key",
+            "examples": [
+              "opentrons"
+            ]
+          },
           "protocol": {
             "type": "string",
             "minLength": 1,
@@ -452,6 +468,22 @@
             "title": "Capability",
             "examples": [
               "liquid-handling"
+            ]
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue",
+            "description": "Only the capability's devices in this queue may take the job (Nextflow's `queue` directive); None: any of them. Routing, not identity: outside the idempotency key",
+            "examples": [
+              "opentrons"
             ]
           },
           "protocol": {

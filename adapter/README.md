@@ -22,7 +22,7 @@ Settings (environment variables):
 | Variable | Default | What it does |
 |---|---|---|
 | `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated liquid handler. `fake`: a scripted device for tests |
-| `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…) |
+| `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…); or pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1` (`opentrons-1`, `opentrons-2`, `hamilton-1`). A job naming a queue (`labctl --queue`, from Nextflow's `queue` directive) runs only on that queue's robots |
 | `NF_LAB_VISUALIZER` | off | `1`: each PyLabRobot robot serves a live view of its deck (port 1337, then 1338…), linked from its row on the deck page |
 | `NF_LAB_SIMULATED_OPERATOR` | on for `fake`, off for `plr` | `1`: nobody at the bench is needed, because the adapter loads and unloads plates itself. Failed jobs still wait for a person |
 | `NF_LAB_LEDGER` | `ledger.sqlite` | The ledger file. Keep it between runs: it is what stops a job from running twice |

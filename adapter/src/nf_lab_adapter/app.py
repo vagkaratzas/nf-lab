@@ -47,6 +47,11 @@ class Device:
     # Unload a done job's plate and load the plate the next queued job names, with
     # no person. For tests and unattended runs; failed jobs still wait for a person.
     simulated_operator: bool = False
+    # Nextflow's `queue` directive picks it: a job naming a queue runs only on that queue's devices.
+    queue: str | None = None
+
+    def takes(self, job: SubmitRequest) -> bool:
+        return job.capability == self.capability and job.queue in (None, self.queue)
 
 
 class Conflict(Exception):
@@ -79,6 +84,7 @@ class DeviceStatus(StrEnum):
 class DeviceView(BaseModel):
     device_id: str
     capability: str
+    queue: str | None
     protocols: list[str]
     viewer: str | None = Field(description="Live view of the deck, if the backend serves one")
     simulated_operator: bool
@@ -112,7 +118,7 @@ class Adapter:
             wake.clear()
             if device.simulated_operator:
                 await self.operate(device)
-            job = self.ledger.next_runnable(device.device_id, device.capability)
+            job = self.ledger.next_runnable(device.device_id, device.capability, device.queue)
             if job is None:  # nothing queued for the plate on the deck, or the device is locked
                 await wake.wait()
                 continue
@@ -125,7 +131,7 @@ class Adapter:
             await self.unload(device, SIMULATED_OPERATOR)
         elif held:
             return
-        queue = self.ledger.queued(device.capability)
+        queue = self.ledger.queued(device.capability, device.queue)
         if any(j.plate == self.ledger.plate(device.device_id) for j in queue):
             return  # the plate on the deck has work
         plate = next((j.plate for j in queue if self.ledger.where(j.plate) is None), None)
@@ -267,18 +273,19 @@ class Adapter:
 
     def view(self, device: Device) -> DeviceView:
         status, detail = self.status(device)
-        return DeviceView(device_id=device.device_id, capability=device.capability,
+        return DeviceView(device_id=device.device_id, capability=device.capability, queue=device.queue,
                           protocols=sorted(device.backend.PROTOCOLS), viewer=device.backend.viewer,
                           simulated_operator=device.simulated_operator, status=status, detail=detail,
                           plate=self.ledger.plate(device.device_id), held=self.ledger.held(device.device_id))
 
     def waiting_for(self, job: Job) -> str:
         """What a person has to do at the decks before the queued job can start."""
-        pool = [d for d in self.by_id.values() if d.capability == job.capability]
+        pool = [d for d in self.by_id.values() if d.takes(job)]
         if on := self.ledger.where(job.plate):
             device = self.by_id[on]
             if device not in pool:
-                return f"plate {job.plate} is on {on}, which has no {job.capability}: unload it there"
+                why = f"isn't in queue {job.queue}" if device.capability == job.capability else f"has no {job.capability}"
+                return f"plate {job.plate} is on {on}, which {why}: unload it there"
             status, text = self.status(device)
             if status == DeviceStatus.ready:
                 return f"plate {job.plate} is on {on}: starts there after earlier jobs for that plate"
@@ -286,7 +293,8 @@ class Adapter:
         if free := [d.device_id for d in pool if not self.ledger.held(d.device_id)]:
             return f"plate {job.plate} isn't on any deck: load it on {' or '.join(free)}"
         busy = "; ".join(f"{d.device_id}: {self.status(d)[1]}" for d in pool)
-        return f"plate {job.plate} isn't on any deck and no {job.capability} device is free: {busy}"
+        where = f" in queue {job.queue}" if job.queue else ""
+        return f"plate {job.plate} isn't on any deck and no {job.capability} device{where} is free: {busy}"
 
 
 def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
@@ -347,8 +355,9 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
     )
     async def submit(req: SubmitRequest, response: Response) -> Job:
         """Queue a job for the capability's pool, or return the existing one for this idempotency key."""
-        if all(d.capability != req.capability for d in devices):
-            raise HTTPException(404, f"no device for capability {req.capability!r}")
+        if not any(d.takes(req) for d in devices):
+            where = f" in queue {req.queue!r}" if req.queue else ""
+            raise HTTPException(404, f"no device for capability {req.capability!r}{where}")
         try:
             job, created = ledger.submit(req)
         except KeyConflict:
@@ -446,10 +455,28 @@ def contract_spec(app: FastAPI) -> dict:
     return get_openapi(title=app.title, version=app.version, routes=routes)
 
 
-def main() -> FastAPI:
-    """`uvicorn --factory` entry point: a pool of simulated liquid handlers.
+def device_specs(spec: str, prefix: str) -> list[tuple[str, str, str | None]]:
+    """NF_LAB_DEVICES as (device_id, capability, queue) triples: a count of liquid handlers named
+    <prefix>-1…, or `capability[/queue]:count,…` named <queue or capability>-1…."""
+    if spec.isdigit():
+        return [(f"{prefix}-{i}", "liquid-handling", None) for i in range(1, int(spec) + 1)]
+    out = []
+    for part in spec.split(","):
+        pool, _, count = part.strip().rpartition(":")
+        capability, _, queue = pool.partition("/")
+        if not (capability and count.isdigit()):
+            raise ValueError(f"NF_LAB_DEVICES: {part.strip()!r} isn't capability[/queue]:count")
+        out += [(f"{queue or capability}-{i}", capability, queue or None) for i in range(1, int(count) + 1)]
+    if len({d[0] for d in out}) < len(out):
+        raise ValueError(f"NF_LAB_DEVICES: {spec!r} names a device twice: give each pool its own queue")
+    return out
 
-    NF_LAB_DEVICES: how many (default 1), named fake-1… or plr-sim-1….
+
+def main() -> FastAPI:
+    """`uvicorn --factory` entry point: a pool of simulated devices.
+
+    NF_LAB_DEVICES: how many liquid handlers (default 1), named fake-1… or plr-sim-1…; or
+    pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1`.
     NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation);
     with plr, NF_LAB_VISUALIZER=1 serves PyLabRobot's browser view of the deck.
     NF_LAB_SIMULATED_OPERATOR=1 or 0: default 1 for fake (tests, CI), 0 for plr,
@@ -464,10 +491,10 @@ def main() -> FastAPI:
         prefix, backend = "fake", lambda: FakeBackend(step=step)
     return create_app(
         os.environ.get("NF_LAB_LEDGER", "ledger.sqlite"),
-        [Device(f"{prefix}-{i}", "liquid-handling", backend(),
+        [Device(device_id, capability, backend(), queue=queue,
                 silent_after=float(os.environ.get("NF_LAB_SILENT_AFTER", "600")),
                 simulated_operator=os.environ.get("NF_LAB_SIMULATED_OPERATOR", "0" if plr else "1") == "1")
-         for i in range(1, int(os.environ.get("NF_LAB_DEVICES", "1")) + 1)],
+         for device_id, capability, queue in device_specs(os.environ.get("NF_LAB_DEVICES", "1"), prefix)],
     )
 
 
