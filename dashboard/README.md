@@ -24,7 +24,7 @@ The bar at the top runs scripted demos of the example you pick (`EXAMPLES` in `d
 
 **Stop** ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and leaves the adapter up. There is no pause: Nextflow and the robots can't be paused, so a paused narrator would fall out of step with them. The demos run slowly instead (`NF_LAB_DEMO_STEP`).
 
-For the demos, start only the dashboard: they need port 8000 free, so stop any adapter you started yourself. Each demo keeps its ledger, logs and results in `build/demo/<example>/<demo>/`, and the panels read from there once a demo has run. `nextflow` must be on `PATH` (or set `NXF_CMD`), with the plugin installed (`make install`).
+For the demos, start only the dashboard: they need port 8000 free, so stop any adapter you started yourself. Each demo keeps its ledger, logs and results in `build/demo/<example>/<demo>/`, and the panels read from there once a demo has run. It's also the run's launch dir: `cd` there to query its lineage (`nextflow lineage list`); the demo writes the `nextflow.config` that command needs. `nextflow` must be on `PATH` (or set `NXF_CMD`), with the plugin installed (`make install`).
 
 ```bash
 cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080

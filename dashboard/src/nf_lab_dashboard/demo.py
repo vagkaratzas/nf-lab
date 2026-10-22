@@ -184,6 +184,8 @@ class Demo:
         if wipe:
             shutil.rmtree(self.run_dir, ignore_errors=True)
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        # `nextflow lineage` reads only the launch dir's config, never the pipeline's: let it open this run's store
+        (self.run_dir / "nextflow.config").write_text("lineage.enabled = true\n")
         env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": EXAMPLES[self.example][1], "NF_LAB_STEP": str(self.s.step),
                "NF_LAB_SIMULATED_OPERATOR": "0", "NF_LAB_VISUALIZER": "1" if self.s.backend == "plr" else "0",
                "NF_LAB_LEDGER": str(self.run_dir / "ledger.sqlite")}

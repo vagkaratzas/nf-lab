@@ -105,6 +105,7 @@ def test_manual_leaves_the_deck_to_you_and_rerun_keeps_the_ledger(tmp_path):
     assert "Rerun ended (exit 0)" in demo.log[-1]["text"]
     rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT state FROM jobs").fetchall()
     assert rows == [("done",)] * 4  # the ledger survived the restart: nothing ran twice
+    assert (demo.run_dir / "nextflow.config").read_text() == "lineage.enabled = true\n"  # for `nextflow lineage`
 
 
 def test_a_killed_dashboard_takes_its_adapter_with_it(tmp_path):
