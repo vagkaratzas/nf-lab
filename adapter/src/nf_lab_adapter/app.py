@@ -229,7 +229,8 @@ class Adapter:
                            " first (Succeeded or Failed), then unload")
         self.ledger.unload(device.device_id, by)
         await device.backend.load(None)
-        self.wake_pool(device.capability)  # the plate may now go on another device
+        for wake in self.wake.values():  # the plate may now go on another device, of any capability
+            wake.set()
 
     def estop(self, device: Device, by: str) -> None:
         """Stop the running job now, past the stop boundary too: a person decided. The lock stays held."""

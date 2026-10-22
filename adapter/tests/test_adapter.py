@@ -268,6 +268,21 @@ def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
             assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
 
 
+def test_a_plate_moves_from_the_liquid_handler_to_the_reader(tmp_path):
+    devices = [Device("fake-1", "liquid-handling", FakeBackend(0.05)),
+               Device("reader-1", "plate-reading", FakeBackend(0.05), simulated_operator=True)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "fake-1")
+        transfer = wait(c, c.post("/jobs", json=req("t", "plate_transfer")).json()["job_id"])
+        read = c.post("/jobs", json=req("r", "plate_read", capability="plate-reading")).json()
+        time.sleep(0.2)
+        assert c.get(f"/jobs/{read['job_id']}").json()["state"] == "queued"  # P1 still on the liquid handler
+        c.post(f"/jobs/{transfer['job_id']}/release")  # a person takes P1 off: the reader's operator loads it
+        read = wait(c, read["job_id"])
+        assert (read["state"], read["device_id"], read["stoppable"]) == ("done", "reader-1", True)  # no liquid moved
+        assert [w["absorbance"] for w in read["result"]["wells"]] == [absorbance(Well(**w)) for w in wells("A1:S1", "B1:S2")]
+
+
 def test_absorbance_is_background_for_controls_and_stable_per_sample():
     assert absorbance(Well(row="A", column=1, sample="NC1", type="negative_control")) == 0.05
     assert absorbance(Well(row="A", column=1, sample="BLK1", type="blank")) == 0.04
