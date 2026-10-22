@@ -105,6 +105,7 @@ def test_manual_leaves_the_deck_to_you_and_rerun_keeps_the_ledger(tmp_path):
     assert "Rerun ended (exit 0)" in demo.log[-1]["text"]
     rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT state FROM jobs").fetchall()
     assert rows == [("done",)] * 4  # the ledger survived the restart: nothing ran twice
+    assert (demo.run_dir / "nextflow.config").read_text() == "lineage.enabled = true\n"  # for `nextflow lineage`
 
 
 def test_a_killed_dashboard_takes_its_adapter_with_it(tmp_path):
@@ -134,3 +135,51 @@ time.sleep(60)
         time.sleep(0.1)
     os.kill(adapter, signal.SIGKILL)
     raise AssertionError("the adapter outlived the dashboard")
+
+
+ASSAY_STUB = """#!/usr/bin/env bash
+echo "$@" > nextflow.args
+run() {{ "{labctl}" run --wait --poll 0.1 --outdir "$1" --capability "$2" --protocol "$3" --protocol-version 1.0 \\
+    --plate P1 --wells A1:S1 > /dev/null 2>&1; }}
+run transfer liquid-handling plate_transfer && run read plate-reading plate_read
+"""
+
+
+def test_pool_and_estop_are_scripted_for_plate_transfer_only(tmp_path):
+    demo = Demo(Settings(nf_lab=NF_LAB, runs=tmp_path))
+    assert {e["id"]: e["scenarios"] for e in demo.view()["examples"]}["plate_assay"] == ["manual"]
+    for scenario in ("pool", "estop"):
+        try:
+            demo.start(scenario, "plate_assay")
+            raise AssertionError(f"{scenario} started for plate_assay")
+        except KeyError:
+            pass
+    assert demo.task is None
+
+
+def test_manual_plate_assay_moves_the_plate_from_the_liquid_handler_to_the_reader(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    stub = tmp_path / "nextflow"
+    stub.write_text(ASSAY_STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
+    stub.chmod(0o755)
+    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.05, nextflow=[str(stub)], beat=0, tick=0.1,
+                         runs=tmp_path / "runs"))
+
+    async def go():
+        demo.start("manual", "plate_assay")
+        while demo.pipeline is None:
+            await asyncio.sleep(0.05)
+        assert {d["capability"] for d in await demo.api("GET", "/devices")} == {"liquid-handling", "plate-reading"}
+        await demo.serve_until(demo.pipeline_ended)  # the test plays you: P1 goes on a liquid handler, then the reader
+        await asyncio.wait_for(asyncio.shield(demo.task), 30)
+        await demo.shutdown()
+    asyncio.run(go())
+    assert demo.status == "finished", demo.log
+    assert demo.run_dir == tmp_path / "runs/plate_assay/manual"
+    assert "examples/plate_assay" in (demo.run_dir / "nextflow.args").read_text()
+    rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute(
+        "SELECT protocol, device_id, state FROM jobs ORDER BY submitted_at").fetchall()
+    assert [(p, d.split("-")[0], s) for p, d, s in rows] == [("plate_transfer", "liquid", "done"),
+                                                             ("plate_read", "plate", "done")]

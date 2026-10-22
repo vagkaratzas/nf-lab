@@ -13,15 +13,21 @@ a queued job only when it is free and holds the job's plate (free is not ready).
 Device pool: a job names a capability, not a device. It stays unbound
 (device_id NULL) while queued; the free device of that capability whose deck
 holds the job's plate takes it. A plate is on one deck at most, so one device
-can take it.
+can take it. A job may also name a queue: then only that queue's devices of the
+capability take it. Which devices may take a job is the adapter's call (`takes`).
+
+Collections: each Nextflow task that submitted a job, or collected it again (a retry,
+`-resume`, a fresh launch), by task hash and session. The task hash is also the
+task's lineage id, so a ledger query leads to Nextflow's lineage of the results.
 """
 
 import json
 import sqlite3
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from .contract import FINAL, Job, SubmitRequest
+from .contract import FINAL, CollectedJob, Collection, Job, SubmitRequest
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -30,6 +36,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     attempt INTEGER NOT NULL,
     device_id TEXT,  -- NULL while queued: bound when a device of the pool takes the job
     capability TEXT NOT NULL,
+    queue TEXT,  -- NULL: any device of the capability
     protocol TEXT NOT NULL,
     protocol_version TEXT NOT NULL,
     plate TEXT NOT NULL,
@@ -53,9 +60,16 @@ CREATE TABLE IF NOT EXISTS decks (
     loaded_at TEXT,
     loaded_by TEXT
 );
-PRAGMA user_version = 3;
+CREATE TABLE IF NOT EXISTS collections (
+    job_id TEXT NOT NULL REFERENCES jobs(job_id),
+    task_hash TEXT NOT NULL,  -- the Nextflow task: its work dir and lineage id
+    session_id TEXT,
+    collected_at TEXT NOT NULL,
+    PRIMARY KEY (job_id, task_hash)
+);
+PRAGMA user_version = 5;
 """
-VERSION = 3  # bump with any SCHEMA change
+VERSION = 5  # bump with any SCHEMA change
 
 PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
 
@@ -129,15 +143,32 @@ class Ledger:
             job_id = uuid.uuid4().hex
             try:
                 self.db.execute(
-                    """INSERT INTO jobs (job_id, idempotency_key, attempt, capability, protocol,
+                    """INSERT INTO jobs (job_id, idempotency_key, attempt, capability, queue, protocol,
                                          protocol_version, plate, wells, state, submitted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
-                    (job_id, req.idempotency_key, attempts + 1, req.capability, req.protocol,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
+                    (job_id, req.idempotency_key, attempts + 1, req.capability, req.queue, req.protocol,
                      req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]), now()),
                 )
             except sqlite3.IntegrityError:  # a live job already holds this key
+                self._collect(earlier.job_id, req)
                 return earlier, False
+            self._collect(job_id, req)
         return self.get(job_id), True
+
+    def _collect(self, job_id: str, req: SubmitRequest) -> None:
+        if req.task_hash:
+            self.db.execute("INSERT OR IGNORE INTO collections VALUES (?, ?, ?, ?)",
+                            (job_id, req.task_hash, req.session_id, now()))
+
+    def session(self, session_id: str) -> list[CollectedJob]:
+        """Every job a Nextflow session submitted or collected, every attempt, oldest first."""
+        rows = self.db.execute(
+            """SELECT * FROM jobs WHERE job_id IN (SELECT job_id FROM collections WHERE session_id = ?)
+               ORDER BY submitted_at""", (session_id,)).fetchall()
+        return [CollectedJob(**self._job(r).model_dump(), collected_by=[
+            Collection(**dict(c)) for c in self.db.execute(
+                "SELECT task_hash, session_id, collected_at FROM collections WHERE job_id = ? ORDER BY collected_at",
+                (r["job_id"],))]) for r in rows]
 
     def held(self, device_id: str) -> Job | None:
         """The job locking the device: started and not released.
@@ -151,10 +182,9 @@ class Ledger:
             (device_id,),
         ).fetchone())
 
-    def queued(self, capability: str | None = None) -> list[Job]:
-        """The pool's queue: jobs waiting for any device with this capability (None: any), oldest first."""
-        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' AND (?1 IS NULL OR capability = ?1)"
-                               " ORDER BY rowid", (capability,))
+    def queued(self) -> list[Job]:
+        """Every queued job, oldest first."""
+        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' ORDER BY rowid")
         return [self._job(r) for r in rows]
 
     def last(self, device_id: str) -> Job | None:
@@ -162,12 +192,12 @@ class Ledger:
         return self._job(self.db.execute(
             "SELECT * FROM jobs WHERE device_id = ? ORDER BY started_at DESC LIMIT 1", (device_id,)).fetchone())
 
-    def next_runnable(self, device_id: str, capability: str) -> Job | None:
-        """Oldest queued job of the capability for the plate on the device's deck; None while the device is locked."""
+    def next_runnable(self, device_id: str, takes: Callable[[Job], bool]) -> Job | None:
+        """Oldest job the device takes for the plate on its deck; None while the device is locked."""
         if self.held(device_id):
             return None
         plate = self.plate(device_id)
-        return next((j for j in self.queued(capability) if j.plate == plate), None)
+        return next((j for j in self.queued() if j.plate == plate and takes(j)), None)
 
     def plate(self, device_id: str) -> str | None:
         row = self.db.execute("SELECT plate FROM decks WHERE device_id = ?", (device_id,)).fetchone()

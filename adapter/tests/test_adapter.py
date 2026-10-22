@@ -5,8 +5,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from nf_lab_adapter.app import Device, contract_spec, create_app
-from nf_lab_adapter.backends import FakeBackend
+from nf_lab_adapter.app import Device, contract_spec, create_app, device_specs
+from nf_lab_adapter.backends import FakeBackend, absorbance
+from nf_lab_adapter.contract import Well
 
 FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped", "voided"}
 
@@ -81,12 +82,12 @@ def test_plate_map_is_validated(tmp_path):
 
 def test_a_ledger_from_an_older_adapter_is_refused(tmp_path):
     import sqlite3
-    from nf_lab_adapter.ledger import SCHEMA
-    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace("user_version = 3", "user_version = 1"))
+    from nf_lab_adapter.ledger import SCHEMA, VERSION
+    sqlite3.connect(tmp_path / "old.sqlite").executescript(SCHEMA.replace(f"user_version = {VERSION}", "user_version = 1"))
     try:
         create_app(str(tmp_path / "old.sqlite"), [])
     except RuntimeError as e:
-        assert "ledger version 1, this adapter needs 3" in str(e)
+        assert f"ledger version 1, this adapter needs {VERSION}" in str(e)
     else:
         raise AssertionError("old ledger accepted")
 
@@ -165,6 +166,21 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
             assert repeat.status_code == 200 and repeat.json()["job_id"] == job["job_id"]
             void_and_unload(c, job)
 
+
+
+def test_a_session_lists_every_attempt_with_the_tasks_that_collected_it(tmp_path):
+    h1, h2, h3 = "a" * 32, "b" * 32, "c" * 32  # Nextflow task hashes: the tasks' lineage ids
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        submit = lambda h, s: c.post("/jobs", json=req("o", "preflight_once", task_hash=h, session_id=s))
+        wait(c, submit(h1, "s1").json()["job_id"])  # attempt 1 fails pre-flight
+        done = wait(c, submit(h2, "s1").json()["job_id"])  # the retry, a new task
+        assert submit(h3, "s2").status_code == 200  # a fresh launch collects the same done job
+        s1 = c.get("/jobs", params={"session": "s1"}).json()
+        assert [(j["attempt"], j["state"], [t["task_hash"] for t in j["collected_by"]]) for j in s1] == [
+            (1, "failed_preflight", [h1]), (2, "done", [h2, h3])]
+        assert [j["job_id"] for j in c.get("/jobs", params={"session": "s2"}).json()] == [done["job_id"]]
+        assert c.get("/jobs", params={"session": "unknown"}).json() == []
+        assert c.post("/jobs", json=req("z", task_hash="not-a-task-hash")).status_code == 422
 
 def test_preflight_failure_frees_the_device_without_release(tmp_path):
     with adapter(tmp_path / "ledger.sqlite") as c:
@@ -265,6 +281,87 @@ def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
         for d in ("fake-1", "fake-2"):
             runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
             assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
+
+
+def test_a_plate_moves_from_the_liquid_handler_to_the_reader(tmp_path):
+    devices = [Device("fake-1", "liquid-handling", FakeBackend(0.05)),
+               Device("reader-1", "plate-reading", FakeBackend(0.05), simulated_operator=True)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "fake-1")
+        transfer = wait(c, c.post("/jobs", json=req("t", "plate_transfer")).json()["job_id"])
+        read = c.post("/jobs", json=req("r", "plate_read", capability="plate-reading")).json()
+        time.sleep(0.2)
+        assert c.get(f"/jobs/{read['job_id']}").json()["state"] == "queued"  # P1 still on the liquid handler
+        c.post(f"/jobs/{transfer['job_id']}/release")  # a person takes P1 off: the reader's operator loads it
+        read = wait(c, read["job_id"])
+        assert (read["state"], read["device_id"], read["stoppable"]) == ("done", "reader-1", True)  # no liquid moved
+        assert [w["absorbance"] for w in read["result"]["wells"]] == [absorbance(Well(**w)) for w in wells("A1:S1", "B1:S2")]
+
+
+def test_absorbance_is_background_for_controls_and_stable_per_sample():
+    assert absorbance(Well(row="A", column=1, sample="NC1", type="negative_control")) == 0.05
+    assert absorbance(Well(row="A", column=1, sample="BLK1", type="blank")) == 0.04
+    s1 = absorbance(Well(row="A", column=1, sample="S1"))
+    assert 0.2 <= s1 < 1.5 and s1 == absorbance(Well(row="H", column=12, sample="S1"))
+
+
+def test_a_queue_routes_a_job_to_its_robots(tmp_path):
+    devices = [Device(f"{q}-1", "liquid-handling", FakeBackend(0.05), queue=q) for q in ("opentrons", "hamilton")]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "opentrons-1")
+        job = c.post("/jobs", json=req("k", queue="hamilton")).json()
+        assert (job["queue"], job["device_id"]) == ("hamilton", None)
+        assert c.get("/queue").json()[0]["waiting_for"] == \
+            "plate P1 is on opentrons-1, which isn't in queue hamilton: unload it there"
+        c.post("/devices/opentrons-1/unload")
+        load(c, "P1", "hamilton-1")
+        assert wait(c, job["job_id"])["device_id"] == "hamilton-1"
+
+        load(c, "P2", "opentrons-1")  # no queue: any robot of the capability
+        assert wait(c, c.post("/jobs", json=req("k2", plate="P2")).json()["job_id"])["device_id"] == "opentrons-1"
+
+        r = c.post("/jobs", json=req("k3", queue="tecan"))  # a typo fails at once instead of waiting forever
+        assert r.status_code == 404 and "queue 'tecan'" in r.json()["detail"]
+        # routing, not identity: the same key in another queue is the same job
+        assert c.post("/jobs", json=req("k", queue="opentrons")).json()["job_id"] == job["job_id"]
+
+
+def test_a_job_goes_only_to_robots_that_run_its_protocol(tmp_path):
+    transfer_only = FakeBackend(0.05)
+    transfer_only.PROTOCOLS = {"plate_transfer"}  # another brand: same capability, fewer protocols
+    devices = [Device("fake-1", "liquid-handling", FakeBackend(0.05)), Device("fake-2", "liquid-handling", transfer_only)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "fake-2")
+        job = c.post("/jobs", json=req("k")).json()  # protocol ok: fake-1 only
+        assert c.get("/queue").json()[0]["waiting_for"] == "plate P1 is on fake-2, which doesn't run ok: unload it there"
+        c.post("/devices/fake-2/unload")
+        load(c, "P1", "fake-1")
+        assert wait(c, job["job_id"])["device_id"] == "fake-1"
+
+        r = c.post("/jobs", json=req("k2", "nope"))  # no robot runs it: refused, not a pre-flight failure later
+        assert r.status_code == 404 and "protocol 'nope'" in r.json()["detail"]
+
+
+def test_the_simulated_operator_loads_a_plate_only_where_its_queue_runs(tmp_path):
+    devices = [Device(f"{q}-1", "liquid-handling", FakeBackend(0.05), simulated_operator=True, queue=q)
+               for q in ("opentrons", "hamilton")]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        jobs = [c.post("/jobs", json=req(f"k{i}", plate=f"P{i}", queue="hamilton")).json() for i in (1, 2)]
+        assert {wait(c, j["job_id"], lambda j: j["released_at"])["device_id"] for j in jobs} == {"hamilton-1"}
+
+
+def test_device_specs():
+    assert device_specs("2", "fake") == [("fake-1", "liquid-handling", None), ("fake-2", "liquid-handling", None)]
+    assert device_specs("liquid-handling/opentrons:2, liquid-handling/hamilton:1,thermocycling:1", "fake") == [
+        ("opentrons-1", "liquid-handling", "opentrons"), ("opentrons-2", "liquid-handling", "opentrons"),
+        ("hamilton-1", "liquid-handling", "hamilton"), ("thermocycling-1", "thermocycling", None)]
+    for bad in ("liquid-handling", "liquid-handling:1,liquid-handling:1"):
+        try:
+            device_specs(bad, "fake")
+        except ValueError as e:
+            assert "NF_LAB_DEVICES" in str(e)
+        else:
+            raise AssertionError(bad)
 
 
 def test_devices_and_queue_tell_a_newcomer_what_to_do(tmp_path):

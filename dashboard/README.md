@@ -13,7 +13,7 @@ The panels only read: they open the ledger read-only. The demo bar is the one pa
 
 ## Demos
 
-The bar at the top runs scripted demos. Each one starts fresh: it starts its own adapter (a new ledger, two simulated PyLabRobot robots, empty decks), runs `examples/plate_transfer`, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
+The bar at the top runs scripted demos of the example you pick (`EXAMPLES` in `demo.py`): `plate_transfer` (two liquid handlers) or `plate_assay` (two liquid handlers and a plate reader; Manual only, its Pool and E-stop aren't scripted). Each demo starts fresh: it starts its own adapter (a new ledger, the example's simulated PyLabRobot machines, empty decks), runs the example, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
 
 - **Pool**: four plates over two robots; the operator loads plates as robots free up. About 2.5 minutes.
 - **E-stop**: the operator e-stops one robot mid-plate. The other robot finishes (`errorStrategy 'finish'`), the run ends failed; the operator presses Failed and unloads; a `-resume` rerun runs only that plate again, as attempt 2. About 4 minutes.
@@ -24,7 +24,7 @@ The bar at the top runs scripted demos. Each one starts fresh: it starts its own
 
 **Stop** ends the pipeline (TERM: jobs before the stop boundary are safe-stopped) and leaves the adapter up. There is no pause: Nextflow and the robots can't be paused, so a paused narrator would fall out of step with them. The demos run slowly instead (`NF_LAB_DEMO_STEP`).
 
-For the demos, start only the dashboard: they need port 8000 free, so stop any adapter you started yourself. Each demo keeps its ledger, logs and results in `build/demo/<demo>/`, and the panels read from there once a demo has run. `nextflow` must be on `PATH` (or set `NXF_CMD`), with the plugin installed (`make install`).
+For the demos, start only the dashboard: they need port 8000 free, so stop any adapter you started yourself. Each demo keeps its ledger, logs and results in `build/demo/<example>/<demo>/`, and the panels read from there once a demo has run. It's also the run's launch dir: `cd` there to query its lineage (`nextflow lineage list`); the demo writes the `nextflow.config` that command needs. `nextflow` must be on `PATH` (or set `NXF_CMD`), with the plugin installed (`make install`).
 
 ```bash
 cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080

@@ -22,7 +22,7 @@ Settings (environment variables):
 | Variable | Default | What it does |
 |---|---|---|
 | `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated liquid handler. `fake`: a scripted device for tests |
-| `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…) |
+| `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…); or pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1` (`opentrons-1`, `opentrons-2`, `hamilton-1`). A job naming a queue (`labctl --queue`, from Nextflow's `queue` directive) runs only on that queue's robots |
 | `NF_LAB_VISUALIZER` | off | `1`: each PyLabRobot robot serves a live view of its deck (port 1337, then 1338…), linked from its row on the deck page |
 | `NF_LAB_SIMULATED_OPERATOR` | on for `fake`, off for `plr` | `1`: nobody at the bench is needed, because the adapter loads and unloads plates itself. Failed jobs still wait for a person |
 | `NF_LAB_LEDGER` | `ledger.sqlite` | The ledger file. Keep it between runs: it is what stops a job from running twice |
@@ -120,10 +120,12 @@ process PLATE_TRANSFER {
     ...
     script:
     """
-    labctl run --wait --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
+    labctl run --wait --session ${workflow.sessionId} --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
     """
 }
 ```
+
+Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session from `--session`.
 
 In `nextflow.config`, wet processes use the `lab` executor and retry only what is safe to retry:
 
@@ -141,13 +143,19 @@ process {
 
 ## The contract
 
-`labctl` and the adapter talk through five calls: submit, status, lookup, safe_stop and release. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
+`labctl` and the adapter talk through six calls: submit, status, lookup, safe_stop, release and session_jobs. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
 
 Regenerate `openapi.json` after changing the contract:
 
 ```bash
 uv run python -m nf_lab_adapter.app > openapi.json
 ```
+
+## The lab report
+
+A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
+
+What lineage and the ledger answer together, with the commands: [Questions lineage answers](../README.md#questions-lineage-answers).
 
 ## Tests
 

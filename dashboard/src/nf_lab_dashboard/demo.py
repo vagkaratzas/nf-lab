@@ -1,7 +1,7 @@
 """Demo scenarios: the dashboard's control panel.
 
-A scenario starts a fresh adapter (new ledger, two simulated robots, empty decks),
-runs the example pipeline, and plays the person at the deck: it loads and unloads
+A scenario starts a fresh adapter (new ledger, the example's simulated machines, empty decks),
+runs an example pipeline (EXAMPLES), and plays the person at the deck: it loads and unloads
 plates, presses e-stop, Succeeded or Failed, all through the adapter's operator
 API, as a person on the deck page would. It narrates each step.
 
@@ -50,6 +50,13 @@ class Settings:
     runs: Path | None = None  # one folder per scenario (ledger, logs, results); default nf-lab/build/demo
 
 
+# example -> (title, the adapter's NF_LAB_DEVICES, the scenarios scripted for it). Manual runs any example.
+EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
+    "plate_transfer": ("Plate transfer", "2", ["pool", "estop", "manual"]),
+    "plate_assay": ("Plate assay: transfer, then read", "liquid-handling:2,plate-reading:1", ["manual"]),
+}
+
+
 class Busy(Exception):
     """A scenario is already running."""
 
@@ -62,6 +69,7 @@ class Demo:
         self.s = settings
         self.url = f"http://127.0.0.1:{settings.port}"
         self.name: str | None = None
+        self.example = "plate_transfer"
         self.status = "idle"  # running, finished, failed, stopped
         self.log: list[dict] = []
         self.highlight: dict | None = None  # the device the last person step acted on
@@ -74,15 +82,18 @@ class Demo:
 
     def view(self) -> dict:
         return {"scenarios": [{"id": k, "title": t, "blurb": b} for k, (t, b, _) in SCENARIOS.items()],
-                "active": self.name, "status": self.status,
+                "examples": [{"id": k, "title": t, "scenarios": sc} for k, (t, _, sc) in EXAMPLES.items()],
+                "example": self.example, "active": self.name, "status": self.status,
                 "log": self.log[-60:], "highlight": self.highlight,
                 "can_rerun": bool(self.run_dir and (self.run_dir / "ledger.sqlite").exists())}
 
-    def start(self, name: str) -> None:
+    def start(self, name: str, example: str = "plate_transfer") -> None:
+        if name not in EXAMPLES[example][2]:
+            raise KeyError(f"no {name!r} scenario for {example}")
         if self.task and not self.task.done():
             raise Busy(f"{self.name} is running: stop it first")
-        self.name, self.status, self.log, self.highlight = name, "running", [], None
-        self.run_dir = (self.s.runs or self.s.nf_lab / "build" / "demo") / name
+        self.name, self.example, self.status, self.log, self.highlight = name, example, "running", [], None
+        self.run_dir = (self.s.runs or self.s.nf_lab / "build" / "demo") / example / name
         self.task = asyncio.create_task(self._run(SCENARIOS[name][2]))
 
     def rerun(self) -> None:
@@ -173,7 +184,9 @@ class Demo:
         if wipe:
             shutil.rmtree(self.run_dir, ignore_errors=True)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": "2", "NF_LAB_STEP": str(self.s.step),
+        # `nextflow lineage` reads only the launch dir's config, never the pipeline's: let it open this run's store
+        (self.run_dir / "nextflow.config").write_text("lineage.enabled = true\n")
+        env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": EXAMPLES[self.example][1], "NF_LAB_STEP": str(self.s.step),
                "NF_LAB_SIMULATED_OPERATOR": "0", "NF_LAB_VISUALIZER": "1" if self.s.backend == "plr" else "0",
                "NF_LAB_LEDGER": str(self.run_dir / "ledger.sqlite")}
         self.adapter = await asyncio.create_subprocess_exec(
@@ -192,7 +205,7 @@ class Demo:
         raise RuntimeError("the adapter didn't start within 60 s")
 
     async def start_pipeline(self, resume: bool = False) -> None:
-        cmd = [*self.s.nextflow, "run", str(self.s.nf_lab / "examples/plate_transfer"), "-ansi-log", "false",
+        cmd = [*self.s.nextflow, "run", str(self.s.nf_lab / "examples" / self.example), "-ansi-log", "false",
                "-output-dir", str(self.run_dir / "results"), *(["-resume"] if resume else [])]
         self.pipeline = await asyncio.create_subprocess_exec(
             *cmd, cwd=self.run_dir, env={**os.environ, "NF_LAB_ADAPTER": self.url},
@@ -219,10 +232,10 @@ class Demo:
                                   d["device_id"], "POST", f"/devices/{d['device_id']}/unload")
                 return
         on_decks = {d["plate"] for d in devices if d["plate"]}
-        waiting = [j["plate"] for j in await self.api("GET", "/queue") if j["plate"] not in on_decks]
+        waiting = [j for j in await self.api("GET", "/queue") if j["plate"] not in on_decks]
         for d in devices:
-            if d["status"] == "empty" and waiting:
-                plate = waiting.pop(0)
+            if d["status"] == "empty" and (job := next((j for j in waiting if j["capability"] == d["capability"]), None)):
+                plate = job["plate"]
                 await self.person(f"The operator puts plate {plate} on {d['device_id']} and confirms the deck (Load).",
                                   d["device_id"], "POST", f"/devices/{d['device_id']}/load",
                                   {"plate": plate, "by": "demo operator"})
@@ -305,7 +318,7 @@ async def estop(demo: Demo) -> None:
 
 
 async def manual(demo: Demo) -> None:
-    await demo.say("Manual: a fresh ledger, two robots with empty decks. Starting the pipeline.")
+    await demo.say(f"Manual: a fresh ledger, empty decks. Starting examples/{demo.example}.")
     await demo.fresh_adapter()
     await demo.start_pipeline()
     await demo.say("Your turn, you are the operator. The queue in the deck controls says which plate each job waits "

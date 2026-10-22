@@ -1,4 +1,4 @@
-"""PyLabRobot binding on the simulated (chatterbox) liquid handler.
+"""PyLabRobot bindings on simulated (chatterbox) machines: a liquid handler and a plate reader.
 
 PyLabRobot is a library with no job service, so the binding runs the protocol
 in-process. One simulated robot and deck live as long as the adapter: tips, a
@@ -16,13 +16,14 @@ import asyncio
 
 from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.liquid_handling.backends import LiquidHandlerChatterboxBackend
+from pylabrobot.plate_reading import PlateReader, PlateReaderChatterboxBackend
 from pylabrobot.resources import (
     PLT_CAR_L5AC_A00, TIP_CAR_480_A00, STARLetDeck, cor_96_wellplate_360uL_Fb,
     hamilton_96_tiprack_1000uL_filter, set_volume_tracking,
 )
 from pylabrobot.visualizer import Visualizer
 
-from .backends import Progress
+from .backends import ABSORBANCE_NM, Progress, absorbance, reading
 from .contract import Job, State, WellType
 
 CHANNELS = 8
@@ -126,3 +127,64 @@ class PlrSimBackend:
         plate_car[2] = dst = cor_96_wellplate_360uL_Fb("destination")
         lh.deck.assign_child_resource(plate_car, rails=9)
         return tips, src, buf, dst
+
+
+class PlrReaderBackend:
+    """`plate_read`: read the absorbance of each plate-map well. A person's load puts a
+    plate in the reader, an unload takes it out. Reading moves no liquid, so the job
+    never crosses the stop boundary: a failed or safe-stopped read can run again
+    (an e-stopped one after a person's Failed)."""
+
+    PROTOCOLS = {"plate_read"}
+
+    def __init__(self, step: float = 0.5, visualize: bool = False):
+        self.step = step
+        self.visualize = visualize
+        self.reader: PlateReader | None = None
+        self.viewer: str | None = None
+
+    async def setup(self) -> None:
+        reader = PlateReader("plate_reader", size_x=127.76, size_y=85.48, size_z=60,
+                             backend=PlateReaderChatterboxBackend())
+        await reader.setup()
+        if self.visualize:
+            v = Visualizer(resource=reader, open_browser=False)
+            await v.setup()
+            self.viewer = f"http://{v.host}:{v.fs_port}"
+        self.reader = reader
+
+    async def load(self, plate: str | None) -> None:
+        for p in list(self.reader.children):
+            self.reader.unassign_child_resource(p)
+        if plate:
+            self.reader.assign_child_resource(cor_96_wellplate_360uL_Fb("plate"))
+
+    async def read_result(self, job: Job) -> dict:
+        return reading(job)
+
+    async def run(self, job: Job, progress: Progress) -> dict:
+        await asyncio.sleep(self.step)  # plate check
+        progress()
+        if job.protocol not in self.PROTOCOLS:
+            raise ValueError(f"unknown protocol {job.protocol!r}")
+        plate = self.reader.get_plate()
+        rows = "ABCDEFGHIJKLMNOP"[:plate.num_items_y]
+        if off := [f"{w.row}{w.column}" for w in job.wells if w.row not in rows or w.column > plate.num_items_x]:
+            raise ValueError(f"wells {', '.join(off)} aren't on a {plate.num_items}-well plate")
+        progress(state=State.running)
+        # The chatterbox reads a fixed matrix: fill it with the simulated readings first.
+        dummy = [[0.0] * plate.num_items_x for _ in range(plate.num_items_y)]
+        for w in job.wells:
+            dummy[rows.index(w.row)][w.column - 1] = absorbance(w)
+        self.reader.backend.dummy_absorbance = dummy
+        await self.reader.close()
+        await asyncio.sleep(self.step)
+        progress()
+        data = (await self.reader.read_absorbance(
+            ABSORBANCE_NM, wells=plate.get_items([f"{w.row}{w.column}" for w in job.wells]),
+            use_new_return_type=True))[0]["data"]
+        await asyncio.sleep(self.step)
+        await self.reader.open()
+        progress()
+        return {**reading(job), "wells": [{**w.model_dump(mode="json"), "absorbance": data[rows.index(w.row)][w.column - 1]}
+                                           for w in job.wells]}  # what the reader read

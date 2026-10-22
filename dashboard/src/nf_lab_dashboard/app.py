@@ -33,7 +33,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-from .demo import SCENARIOS, Busy, Demo, Settings
+from .demo import EXAMPLES, Busy, Demo, Settings
 
 NF_LAB = Path(__file__).parents[3]  # dashboard/src/nf_lab_dashboard/app.py -> nf-lab
 
@@ -203,11 +203,11 @@ def main() -> FastAPI:
         return demo.view()
 
     @app.post("/api/demo/start/{scenario}")
-    async def demo_start(scenario: str) -> dict:
-        if scenario not in SCENARIOS:
-            raise HTTPException(404, f"no scenario {scenario!r}")
+    async def demo_start(scenario: str, example: str = "plate_transfer") -> dict:
+        if example not in EXAMPLES or scenario not in EXAMPLES[example][2]:
+            raise HTTPException(404, f"no scenario {scenario!r} for example {example!r}")
         try:
-            demo.start(scenario)
+            demo.start(scenario, example)
         except Busy as e:
             raise HTTPException(409, str(e))
         return demo.view()

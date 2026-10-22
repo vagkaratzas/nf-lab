@@ -1,0 +1,17 @@
+# examples/plate_assay runs end to end on the fake backend: four plates, each transferred on
+# one of two liquid handlers, then moved to the reader and read; the readings reach the reports.
+NF_LAB_DEVICES=liquid-handling:2,plate-reading:1 start_adapter
+"$NXF_CMD" -q run "$VALIDATION/../examples/plate_assay" -ansi-log false -output-dir results
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'plate_transfer'") == 4 ]]
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'plate_read' AND device_id = 'plate-reading-1'") == 4 ]]
+# each plate is read only after it left the liquid handler
+[[ $(sql "SELECT count(*) FROM jobs t JOIN jobs r ON t.plate = r.plate
+          WHERE t.protocol = 'plate_transfer' AND r.protocol = 'plate_read' AND r.started_at < t.released_at") == 0 ]]
+[[ $(tail -n +2 results/samples.csv | wc -l) == 26 ]]  # sample wells of the plate map
+[[ $(cat results/reports/*.assay.tsv | wc -l) == 33 ]]  # every filled well, controls and blanks too
+# blanks read at the background, so their corrected value is 0
+[[ $(awk -F'\t' '$2 == "blank" && $6 != 0' results/reports/*.assay.tsv | wc -l) == 0 ]]
+# LAB_REPORT closes the run: every job of the session, each with the task that collected it
+[[ $(jq '.jobs | length' results/lab_report/lab_report.json) == 8 ]]
+[[ $(sql "SELECT count(*) FROM collections") == 8 ]]
+for h in $(sql "SELECT task_hash FROM collections"); do [[ -d work/${h:0:2}/${h:2} ]]; done  # a work dir of this run

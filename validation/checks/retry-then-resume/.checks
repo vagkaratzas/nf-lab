@@ -6,3 +6,5 @@ nf --protocol preflight_once
 nf --protocol preflight_once -resume
 echo "resume: cached=$(logged 'Cached process > WET') submitted=$(logged 'Submitted process > WET')"
 [[ $(sql "SELECT group_concat(state) FROM (SELECT state FROM jobs ORDER BY attempt)") == failed_preflight,done ]]
+# both attempts are linked to the session, the failed one too, each to the task that submitted it
+[[ $(sql "SELECT count(DISTINCT job_id) || '|' || count(DISTINCT session_id) FROM collections") == '2|1' ]]

@@ -12,3 +12,5 @@ __pycache__
 *.sqlite
 results
 *.requests.jsonl
+.serena/
+.lineage

@@ -83,7 +83,7 @@ function render(devices, queue) {
     const running = d.status === "running", failed = d.status === "needs_person";
     const suggest = h ? "" : (toLoad[next++] || "");
     return `<section class="device">
-      <h2>${id} <span class="muted">· ${esc(d.capability)}${d.simulated_operator ? " · simulated operator" : ""}${d.viewer ? ` · <a href="${esc(d.viewer)}" target="_blank" rel="noopener">deck view</a>` : ""}</span></h2>
+      <h2>${id} <span class="muted">· ${esc(d.capability)}${d.queue ? ` · queue ${esc(d.queue)}` : ""}${d.simulated_operator ? " · simulated operator" : ""}${d.viewer ? ` · <a href="${esc(d.viewer)}" target="_blank" rel="noopener">deck view</a>` : ""}</span></h2>
       <div class="muted">Protocols: ${d.protocols.map(p => `<code>${esc(p)}</code>`).join(", ")}</div>
       <div class="status ${STATUS_CLASS[d.status]}">${esc(d.detail)}</div>
       <div class="muted">On the deck: ${d.plate ? `plate <b>${esc(d.plate)}</b>` : "nothing"}</div>

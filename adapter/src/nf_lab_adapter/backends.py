@@ -3,7 +3,8 @@
 A binding is one async `run(job, progress)`:
 - call `progress()` whenever the device reports (refreshes the heartbeat);
   `progress(state=State.running)` to change phase; `progress(stoppable=False)`
-  just before the first liquid moves (the stop boundary);
+  just before the first liquid moves (the stop boundary). A binding that moves
+  no liquid (a plate reader) never crosses it: its failures are retryable;
 - return the job's outputs as a dict;
 - raise to fail. The adapter turns the error into `failed_preflight` or
   `failed_in_protocol` from the stop boundary alone; raise `DeviceStopped` for
@@ -21,9 +22,26 @@ Two more calls come from a person (or the simulated operator), never from a job:
 """
 
 import asyncio
+import zlib
 from typing import Protocol
 
-from .contract import Job, State
+from .contract import Job, State, Well, WellType
+
+ABSORBANCE_NM = 450
+
+
+def absorbance(well: Well) -> float:
+    """A simulated reading: controls and blanks near background, each sample its own value
+    from its ID, so a re-read gives the same number."""
+    if well.type != WellType.sample:
+        return {WellType.negative_control: 0.05, WellType.blank: 0.04}[well.type]
+    return round(0.2 + zlib.crc32(well.sample.encode()) % 1300 / 1000, 3)
+
+
+def reading(job: Job) -> dict:
+    """`plate_read`'s outputs: the absorbance of each plate-map well."""
+    return {"plate": job.plate, "wavelength_nm": ABSORBANCE_NM,
+            "wells": [{**w.model_dump(mode="json"), "absorbance": absorbance(w)} for w in job.wells]}
 
 
 class DeviceStopped(Exception):
@@ -48,9 +66,10 @@ class FakeBackend:
     """Scripted device for tests. The protocol name picks the script.
 
     `plate_transfer` runs like `ok` and returns PlrSimBackend's result shape
-    (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot."""
+    (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
+    `plate_read` returns PlrReaderBackend's and, like a reader, never crosses the stop boundary."""
 
-    PROTOCOLS = {"ok", "plate_transfer", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    PROTOCOLS = {"ok", "plate_transfer", "plate_read", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
     viewer = None
 
     def __init__(self, step: float = 0.05):
@@ -63,6 +82,8 @@ class FakeBackend:
         pass
 
     async def read_result(self, job: Job) -> dict:
+        if job.protocol == "plate_read":
+            return reading(job)
         if job.protocol == "plate_transfer":
             return {"plate": job.plate, "wells": [{**w.model_dump(mode="json"), "volume_ul": 150.0} for w in job.wells]}
         return {"wells": len(job.wells)}
@@ -77,7 +98,8 @@ class FakeBackend:
             raise RuntimeError("deck check failed: tip rack missing")
         progress(state=State.running)
         await asyncio.sleep(self.step)
-        progress(stoppable=False)  # first aspirate: material is now touched
+        if script != "plate_read":
+            progress(stoppable=False)  # first aspirate: material is now touched
         if script == "silent":
             await asyncio.Event().wait()  # device stops reporting, forever
         if script == "estop":
