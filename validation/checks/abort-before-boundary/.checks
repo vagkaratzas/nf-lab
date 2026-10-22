@@ -1,5 +1,5 @@
 # Criterion: aborting the run safe-stops wet tasks; before the boundary nothing is consumed.
-NF_LAB_STEP=1 start_adapter
+NF_LAB_STEP=3 start_adapter  # ~6 s from pre-flight to the boundary: room for the abort to reach labctl on a slow runner
 nf_bg --plates 2
 # both jobs submitted (the second waits for the robot), the first in pre-flight
 until_sql "SELECT (SELECT count(*) FROM jobs) = 2 AND (SELECT count(*) FROM jobs WHERE state = 'preflight') = 1"
