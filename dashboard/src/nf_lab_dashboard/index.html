@@ -82,13 +82,14 @@
 </header>
 <section id="demo" aria-label="Demos">
   <div class="controls">
+    <select id="demo-example" aria-label="Example pipeline" onchange="demo(lastDemo)"></select>
     <span id="demo-buttons"></span>
     <button id="demo-rerun" disabled onclick="demoCall('rerun')" title="Run the pipeline again with -resume on the same ledger">↻ Rerun (-resume)</button>
     <button id="demo-stop" disabled onclick="demoCall('stop')">■ Stop</button>
     <span id="demo-status">pick a demo</span>
   </div>
-  <div id="bubble" class="bubble muted" aria-live="polite">Each demo starts fresh (a new ledger, two simulated robots,
-    empty decks) and runs the example pipeline. Pool and E-stop play the person at the deck; in Manual, you do.</div>
+  <div id="bubble" class="bubble muted" aria-live="polite">Each demo starts fresh (a new ledger, the example's simulated
+    machines, empty decks) and runs the example pipeline you pick. Pool and E-stop play the person at the deck; in Manual, you do.</div>
   <details><summary>Steps so far</summary><ol id="steps"></ol></details>
 </section>
 <main>
@@ -165,18 +166,29 @@ function robots(data) {
   }
 }
 
-let demoBuilt = false, lastHighlight = 0;
+let demoBuilt = false, lastHighlight = 0, lastDemo = null;
 function demo(d) {
-  const bar = document.getElementById("demo-buttons"), running = d.status === "running";
+  const bar = document.getElementById("demo-buttons"), pick = document.getElementById("demo-example");
+  const running = d.status === "running";
+  lastDemo = d;
   if (!demoBuilt) {
+    pick.innerHTML = d.examples.map(e => `<option value="${esc(e.id)}">${esc(e.title)}</option>`).join("");
+    pick.value = d.example;
     bar.innerHTML = d.scenarios.map(s => `<button class="scenario" data-id="${esc(s.id)}" title="${esc(s.blurb)}"
-      onclick="demoCall('start/${esc(s.id)}')">▶ ${esc(s.title)}</button>`).join(" ");
+      onclick="demoCall('start/${esc(s.id)}?example=' + encodeURIComponent(document.getElementById('demo-example').value))">▶ ${esc(s.title)}</button>`).join(" ");
     demoBuilt = true;
   }
-  bar.querySelectorAll("button.scenario").forEach(b => { b.disabled = running; b.classList.toggle("active", b.dataset.id === d.active); });
+  if (running) pick.value = d.example;
+  pick.disabled = running;
+  const offered = d.examples.find(e => e.id === pick.value).scenarios;  // Pool and E-stop are scripted per example
+  bar.querySelectorAll("button.scenario").forEach(b => {
+    b.hidden = !offered.includes(b.dataset.id);
+    b.disabled = running;
+    b.classList.toggle("active", b.dataset.id === d.active && pick.value === d.example);
+  });
   document.getElementById("demo-stop").disabled = !running;
-  document.getElementById("demo-rerun").disabled = running || !d.can_rerun;
-  document.getElementById("demo-status").textContent = d.active ? `${d.active}: ${d.status}` : "pick a demo";
+  document.getElementById("demo-rerun").disabled = running || !d.can_rerun || pick.value !== d.example;  // reruns the last example
+  document.getElementById("demo-status").textContent = d.active ? `${d.example} · ${d.active}: ${d.status}` : "pick a demo";
   const last = d.log[d.log.length - 1];
   if (last) {
     const bubble = document.getElementById("bubble");
