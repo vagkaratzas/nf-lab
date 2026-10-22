@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.plr import PlrSimBackend
+from nf_lab_adapter.plr import PlrReaderBackend, PlrSimBackend
 from test_adapter import req, wait, wells
 
 
@@ -71,3 +71,24 @@ def test_a_reloaded_deck_runs_after_an_estop_mid_transfer(tmp_path):
         retry = wait(c, c.post("/jobs", json=req("k", "plate_transfer", wells=plate)).json()["job_id"])
         assert (retry["state"], retry["attempt"]) == ("done", 2), retry["reason"]
         assert {w["volume_ul"] for w in retry["result"]["wells"]} == {150.0}
+
+
+def test_reader_reads_a_transferred_plate(tmp_path):
+    devices = [Device("plr-sim-1", "liquid-handling", PlrSimBackend(0.0), simulated_operator=True),
+               Device("plate-reading-1", "plate-reading", PlrReaderBackend(0.0), simulated_operator=True)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        plate_map = wells("A1:S1", "D2:NC1:negative_control", "H12:BLK1:blank")
+        transfer = wait(c, c.post("/jobs", json=req("t", "plate_transfer", wells=plate_map)).json()["job_id"])
+        read = req("r", "plate_read", capability="plate-reading", wells=plate_map)
+        read = wait(c, c.post("/jobs", json=read).json()["job_id"])
+        assert (transfer["state"], read["state"], read["device_id"]) == ("done", "done", "plate-reading-1")
+        values = {f"{w['row']}{w['column']}": w["absorbance"] for w in read["result"]["wells"]}
+        assert values["D2"] == 0.05 and values["H12"] == 0.04 and 0.2 <= values["A1"] < 1.5
+        assert read["result"]["wavelength_nm"] == 450
+
+
+def test_reader_without_a_known_well_fails_preflight(tmp_path):
+    devices = [Device("plate-reading-1", "plate-reading", PlrReaderBackend(0.0), simulated_operator=True)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        job = c.post("/jobs", json=req("r", "plate_read", capability="plate-reading", wells=wells("A13:S1"))).json()
+        assert wait(c, job["job_id"])["state"] == "failed_preflight"

@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, contract_spec, create_app, device_specs
-from nf_lab_adapter.backends import FakeBackend
+from nf_lab_adapter.backends import FakeBackend, absorbance
+from nf_lab_adapter.contract import Well
 
 FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped", "voided"}
 
@@ -265,6 +266,13 @@ def test_a_pool_spreads_jobs_one_per_device_at_a_time(tmp_path):
         for d in ("fake-1", "fake-2"):
             runs = sorted((j["started_at"], j["released_at"]) for j in jobs if j["device_id"] == d)
             assert all(a[1] <= b[0] for a, b in zip(runs, runs[1:])), runs
+
+
+def test_absorbance_is_background_for_controls_and_stable_per_sample():
+    assert absorbance(Well(row="A", column=1, sample="NC1", type="negative_control")) == 0.05
+    assert absorbance(Well(row="A", column=1, sample="BLK1", type="blank")) == 0.04
+    s1 = absorbance(Well(row="A", column=1, sample="S1"))
+    assert 0.2 <= s1 < 1.5 and s1 == absorbance(Well(row="H", column=12, sample="S1"))
 
 
 def test_a_queue_routes_a_job_to_its_robots(tmp_path):
