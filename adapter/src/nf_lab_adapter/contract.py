@@ -40,7 +40,9 @@ class Well(BaseModel):
     type: WellType = WellType.sample
 
 
-class SubmitRequest(BaseModel):
+class JobSpec(BaseModel):
+    """What the job is: the payload behind the idempotency key, plus routing."""
+
     capability: str = Field(min_length=1, examples=["liquid-handling"])
     queue: str | None = Field(
         None, min_length=1, examples=["opentrons"],
@@ -64,7 +66,17 @@ class SubmitRequest(BaseModel):
         return wells
 
 
-class Job(SubmitRequest):
+class SubmitRequest(JobSpec):
+    task_hash: str | None = Field(
+        None, pattern=r"^[0-9a-f]{32}$",
+        description="The Nextflow task submitting (or collecting) the job: its hash, i.e. its work dir and its "
+                    "lineage id (lid://<hash>). Kept per job, outside the idempotency key")
+    session_id: str | None = Field(
+        None, min_length=1, description="That task's Nextflow session (`-resume` keeps it): GET /jobs?session= lists "
+                                        "every job it collected, failed attempts too")
+
+
+class Job(JobSpec):
     job_id: str
     attempt: int = Field(description="1 + number of earlier attempts for this key (failed pre-flight or voided)")
     device_id: str | None = Field(
@@ -83,3 +95,15 @@ class Job(SubmitRequest):
     device_heartbeat_at: datetime | None = Field(
         description="Last time the device itself reported; stale = silent device"
     )
+
+
+class Collection(BaseModel):
+    """A Nextflow task that submitted or collected the job (a retry, `-resume` or a fresh launch adds one)."""
+
+    task_hash: str = Field(description="Its work dir and lineage id: lid://<task_hash>")
+    session_id: str | None
+    collected_at: datetime
+
+
+class CollectedJob(Job):
+    collected_by: list[Collection] = Field(description="Every Nextflow task that submitted or collected this job")

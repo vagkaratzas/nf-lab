@@ -11,14 +11,14 @@
         "description": "Queue a job for the capability's pool, or return the existing one for this idempotency key.",
         "operationId": "submit",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SubmitRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -46,6 +46,48 @@
           },
           "409": {
             "description": "Key already used with a different payload"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Session Jobs",
+        "description": "Every job a Nextflow session submitted or collected, every attempt (failures too), with the tasks\nthat collected it: each task hash is that task's lineage id. What `labctl report` writes.",
+        "operationId": "session_jobs",
+        "parameters": [
+          {
+            "name": "session",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CollectedJob"
+                  },
+                  "title": "Response Session Jobs"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -238,6 +280,243 @@
   },
   "components": {
     "schemas": {
+      "CollectedJob": {
+        "properties": {
+          "capability": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Capability",
+            "examples": [
+              "liquid-handling"
+            ]
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue",
+            "description": "Only the capability's devices in this queue may take the job (Nextflow's `queue` directive); None: any of them. Routing, not identity: outside the idempotency key",
+            "examples": [
+              "opentrons"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Protocol"
+          },
+          "protocol_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Protocol Version"
+          },
+          "plate": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Plate",
+            "description": "Plate ID from the plate map"
+          },
+          "wells": {
+            "items": {
+              "$ref": "#/components/schemas/Well"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Wells",
+            "description": "One per filled well; kept in row, column order"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "description": "hash(protocol, version, plate, wells in row, column order); one physical job"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt",
+            "description": "1 + number of earlier attempts for this key (failed pre-flight or voided)"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "The device that took the job; None while queued: the free device of the capability whose deck holds the plate takes it"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "stoppable": {
+            "type": "boolean",
+            "title": "Stoppable",
+            "description": "True until the first liquid moves (the stop boundary)"
+          },
+          "stop_requested": {
+            "type": "boolean",
+            "title": "Stop Requested",
+            "description": "safe_stop arrived after the stop boundary"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why the job failed or stopped; who resolved or voided it, and why"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "Backend outputs, kept so a repeated submit can return them"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submitted At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "device_heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Heartbeat At",
+            "description": "Last time the device itself reported; stale = silent device"
+          },
+          "collected_by": {
+            "items": {
+              "$ref": "#/components/schemas/Collection"
+            },
+            "type": "array",
+            "title": "Collected By",
+            "description": "Every Nextflow task that submitted or collected this job"
+          }
+        },
+        "type": "object",
+        "required": [
+          "capability",
+          "protocol",
+          "protocol_version",
+          "plate",
+          "wells",
+          "idempotency_key",
+          "job_id",
+          "attempt",
+          "device_id",
+          "state",
+          "stoppable",
+          "stop_requested",
+          "reason",
+          "result",
+          "submitted_at",
+          "started_at",
+          "finished_at",
+          "released_at",
+          "device_heartbeat_at",
+          "collected_by"
+        ],
+        "title": "CollectedJob"
+      },
+      "Collection": {
+        "properties": {
+          "task_hash": {
+            "type": "string",
+            "title": "Task Hash",
+            "description": "Its work dir and lineage id: lid://<task_hash>"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "collected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Collected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_hash",
+          "session_id",
+          "collected_at"
+        ],
+        "title": "Collection",
+        "description": "A Nextflow task that submitted or collected the job (a retry, `-resume` or a fresh launch adds one)."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -516,6 +795,32 @@
             "minLength": 1,
             "title": "Idempotency Key",
             "description": "hash(protocol, version, plate, wells in row, column order); one physical job"
+          },
+          "task_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Hash",
+            "description": "The Nextflow task submitting (or collecting) the job: its hash, i.e. its work dir and its lineage id (lid://<hash>). Kept per job, outside the idempotency key"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "That task's Nextflow session (`-resume` keeps it): GET /jobs?session= lists every job it collected, failed attempts too"
           }
         },
         "type": "object",

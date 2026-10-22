@@ -167,6 +167,21 @@ def test_only_preflight_failures_get_a_new_attempt(tmp_path):
             void_and_unload(c, job)
 
 
+
+def test_a_session_lists_every_attempt_with_the_tasks_that_collected_it(tmp_path):
+    h1, h2, h3 = "a" * 32, "b" * 32, "c" * 32  # Nextflow task hashes: the tasks' lineage ids
+    with adapter(tmp_path / "ledger.sqlite") as c:
+        submit = lambda h, s: c.post("/jobs", json=req("o", "preflight_once", task_hash=h, session_id=s))
+        wait(c, submit(h1, "s1").json()["job_id"])  # attempt 1 fails pre-flight
+        done = wait(c, submit(h2, "s1").json()["job_id"])  # the retry, a new task
+        assert submit(h3, "s2").status_code == 200  # a fresh launch collects the same done job
+        s1 = c.get("/jobs", params={"session": "s1"}).json()
+        assert [(j["attempt"], j["state"], [t["task_hash"] for t in j["collected_by"]]) for j in s1] == [
+            (1, "failed_preflight", [h1]), (2, "done", [h2, h3])]
+        assert [j["job_id"] for j in c.get("/jobs", params={"session": "s2"}).json()] == [done["job_id"]]
+        assert c.get("/jobs", params={"session": "unknown"}).json() == []
+        assert c.post("/jobs", json=req("z", task_hash="not-a-task-hash")).status_code == 422
+
 def test_preflight_failure_frees_the_device_without_release(tmp_path):
     with adapter(tmp_path / "ledger.sqlite") as c:
         first = wait(c, c.post("/jobs", json=req("p", "preflight_fail")).json()["job_id"])  # never released

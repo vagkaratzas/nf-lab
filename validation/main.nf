@@ -25,6 +25,7 @@ process WET {
     script:
     """
     labctl run --wait --poll 0.2 \\
+        --session ${workflow.sessionId} \\
         --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol ${protocol} \\
         --protocol-version 1.0 \\

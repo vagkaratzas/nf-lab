@@ -4,7 +4,7 @@ Run:     uv run uvicorn nf_lab_adapter.app:main --factory
 Export:  uv run python -m nf_lab_adapter.app > openapi.json
 
 Two APIs:
-- the device-job contract (submit, status, lookup, safe_stop, release), called by
+- the device-job contract (submit, status, lookup, safe_stop, release, session_jobs), called by
   `labctl`. It's exported to openapi.json, and every adapter must serve it.
 - the operator API (tag `operator`): what a person does at the deck, i.e. load
   a plate, unload it, e-stop, or resolve a failed job. `GET /deck` serves its
@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .backends import Backend, DeviceStopped, FakeBackend
-from .contract import FINAL, Job, State, SubmitRequest
+from .contract import FINAL, CollectedJob, Job, JobSpec, State, SubmitRequest
 from .ledger import KeyConflict, Ledger, now
 
 SIMULATED_OPERATOR = "simulated operator"
@@ -50,7 +50,7 @@ class Device:
     # Nextflow's `queue` directive picks it: a job naming a queue runs only on that queue's devices.
     queue: str | None = None
 
-    def takes(self, job: SubmitRequest) -> bool:
+    def takes(self, job: JobSpec) -> bool:
         return (job.capability == self.capability and job.queue in (None, self.queue)
                 and job.protocol in self.backend.PROTOCOLS)
 
@@ -372,6 +372,12 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
             response.status_code = 200
         response.headers["Location"] = f"/jobs/{job.job_id}"
         return job
+
+    @app.get("/jobs", operation_id="session_jobs", response_model=list[CollectedJob])
+    async def session_jobs(session: str) -> list[CollectedJob]:
+        """Every job a Nextflow session submitted or collected, every attempt (failures too), with the tasks
+        that collected it: each task hash is that task's lineage id. What `labctl report` writes."""
+        return ledger.session(session)
 
     @app.get("/jobs/{job_id}", operation_id="status", response_model=Job, responses={404: {}})
     async def status(job_id: str) -> Job:

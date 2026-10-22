@@ -26,6 +26,10 @@ They come from the ledger: a key that is already done writes its stored outputs
 and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
+Each submit also tells the ledger which Nextflow task collects the job: the task
+hash, read from the work dir's path (<work>/ab/cdef...), which is also the task's
+lineage id, and the session given with `--session`.
+
 Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 """
 
@@ -33,6 +37,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -121,6 +126,12 @@ class Client:
             time.sleep(self.poll)
 
 
+def task_hash(workdir: Path) -> str | None:
+    """A Nextflow work dir is <work>/<2 hex>/<30 hex>: together, the task hash (also its lineage id)."""
+    h = workdir.parent.name + workdir.name
+    return h if len(workdir.parent.name) == 2 and re.fullmatch(r"[0-9a-f]{32}", h) else None
+
+
 def write_outputs(outdir: Path, job: dict) -> None:
     (outdir / "provenance.json").write_text(json.dumps({k: v for k, v in job.items() if k != "result"}, indent=2))
     if job["state"] == "done":
@@ -155,7 +166,7 @@ def run(args: argparse.Namespace) -> int:
         job = client.call("POST", "/jobs", {
             "capability": args.capability, "queue": args.queue, "protocol": args.protocol,
             "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
-            "idempotency_key": key,
+            "idempotency_key": key, "task_hash": task_hash(outdir.resolve()), "session_id": args.session,
         })
         pool = args.capability + (f" pool, queue {args.queue}" if args.queue else " pool")
         log(f"job {job['job_id']} attempt {job['attempt']} on {job['device_id'] or pool}: {job['state']}")
@@ -200,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--poll", type=float, default=2.0, help="seconds between status polls")
     r.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
     r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
+    r.add_argument("--session", help="the Nextflow session (${workflow.sessionId}); the ledger keeps it per job")
     return run(p.parse_args(argv))
 
 

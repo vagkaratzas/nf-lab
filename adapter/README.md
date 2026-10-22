@@ -120,10 +120,12 @@ process PLATE_TRANSFER {
     ...
     script:
     """
-    labctl run --wait --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
+    labctl run --wait --session ${workflow.sessionId} --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
     """
 }
 ```
+
+Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session from `--session`.
 
 In `nextflow.config`, wet processes use the `lab` executor and retry only what is safe to retry:
 
@@ -141,7 +143,7 @@ process {
 
 ## The contract
 
-`labctl` and the adapter talk through five calls: submit, status, lookup, safe_stop and release. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
+`labctl` and the adapter talk through six calls: submit, status, lookup, safe_stop, release and session_jobs. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
 
 Regenerate `openapi.json` after changing the contract:
 

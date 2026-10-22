@@ -23,6 +23,7 @@ process PLATE_READ {
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
     """
     labctl run --wait \\
+        --session ${workflow.sessionId} \\
         --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol plate_read \\
         --protocol-version 1.0 \\

@@ -15,6 +15,10 @@ Device pool: a job names a capability, not a device. It stays unbound
 holds the job's plate takes it. A plate is on one deck at most, so one device
 can take it. A job may also name a queue: then only that queue's devices of the
 capability take it. Which devices may take a job is the adapter's call (`takes`).
+
+Collections: each Nextflow task that submitted a job, or collected it again (a retry,
+`-resume`, a fresh launch), by task hash and session. The task hash is also the
+task's lineage id, so a ledger query leads to Nextflow's lineage of the results.
 """
 
 import json
@@ -23,7 +27,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from .contract import FINAL, Job, SubmitRequest
+from .contract import FINAL, CollectedJob, Collection, Job, SubmitRequest
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -56,9 +60,16 @@ CREATE TABLE IF NOT EXISTS decks (
     loaded_at TEXT,
     loaded_by TEXT
 );
-PRAGMA user_version = 4;
+CREATE TABLE IF NOT EXISTS collections (
+    job_id TEXT NOT NULL REFERENCES jobs(job_id),
+    task_hash TEXT NOT NULL,  -- the Nextflow task: its work dir and lineage id
+    session_id TEXT,
+    collected_at TEXT NOT NULL,
+    PRIMARY KEY (job_id, task_hash)
+);
+PRAGMA user_version = 5;
 """
-VERSION = 4  # bump with any SCHEMA change
+VERSION = 5  # bump with any SCHEMA change
 
 PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
 
@@ -139,8 +150,25 @@ class Ledger:
                      req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]), now()),
                 )
             except sqlite3.IntegrityError:  # a live job already holds this key
+                self._collect(earlier.job_id, req)
                 return earlier, False
+            self._collect(job_id, req)
         return self.get(job_id), True
+
+    def _collect(self, job_id: str, req: SubmitRequest) -> None:
+        if req.task_hash:
+            self.db.execute("INSERT OR IGNORE INTO collections VALUES (?, ?, ?, ?)",
+                            (job_id, req.task_hash, req.session_id, now()))
+
+    def session(self, session_id: str) -> list[CollectedJob]:
+        """Every job a Nextflow session submitted or collected, every attempt, oldest first."""
+        rows = self.db.execute(
+            """SELECT * FROM jobs WHERE job_id IN (SELECT job_id FROM collections WHERE session_id = ?)
+               ORDER BY submitted_at""", (session_id,)).fetchall()
+        return [CollectedJob(**self._job(r).model_dump(), collected_by=[
+            Collection(**dict(c)) for c in self.db.execute(
+                "SELECT task_hash, session_id, collected_at FROM collections WHERE job_id = ? ORDER BY collected_at",
+                (r["job_id"],))]) for r in rows]
 
     def held(self, device_id: str) -> Job | None:
         """The job locking the device: started and not released.

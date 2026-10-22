@@ -13,7 +13,7 @@ import uvicorn
 
 from nf_lab_adapter.app import Device, create_app
 from nf_lab_adapter.backends import FakeBackend
-from nf_lab_adapter.labctl import Client
+from nf_lab_adapter.labctl import Client, task_hash
 
 
 @contextmanager
@@ -40,13 +40,15 @@ def serve(tmp_path, step: float = 0.05):
 
 
 def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float = 2, wait=True,
-           out: Path | None = None, wells=("A1:S1", "B1:S2"), poll: float = 0.05, **popen):
+           out: Path | None = None, wells=("A1:S1", "B1:S2"), poll: float = 0.05, session: str | None = None,
+           **popen):
     cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--capability", "liquid-handling",
            "--protocol", protocol, "--protocol-version", "1.0", "--plate", "P1", "--wells", *wells,
            "--adapter", url, "--poll", str(poll), "--grace", str(grace),
            "--outdir", str(out or tempfile.mkdtemp())]
     cmd += ["--key", key] if key else []
     cmd += ["--wait"] if wait else []
+    cmd += ["--session", session] if session else []
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **popen)
 
 
@@ -151,3 +153,8 @@ def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
         assert finish(p)[0] == 69  # labctl can't know what happened meanwhile
     with serve(tmp_path) as (url, _):  # same ledger: the restart failed the job in protocol
         assert finish(labctl(url, "silent", key="k"))[0] == 1  # the retry gets the truth
+
+
+def test_task_hash_is_read_from_a_nextflow_work_dir():
+    assert task_hash(Path("/runs/work/ab") / ("c" * 30)) == "ab" + "c" * 30
+    assert task_hash(Path("/tmp/somewhere")) is None
