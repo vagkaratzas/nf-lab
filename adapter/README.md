@@ -145,6 +145,20 @@ process {
 
 `labctl` and the adapter talk through six calls: submit, status, lookup, safe_stop, release and session_jobs. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
 
+## The lab report
+
+A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
+
+From the ledger to lineage (the examples turn lineage on): `SELECT task_hash FROM collections JOIN jobs USING (job_id) WHERE device_id = 'liquid-handling-1'` lists the tasks that collected that device's jobs. In the launch dir, `nextflow lineage view lid://<task_hash>` shows one, and `nextflow lineage render lid://<task_hash>` its inputs (upstream). Lineage has no downstream command; to find what was built from the task, scan the session's task records:
+
+```bash
+for t in $(nextflow lineage find type=TaskRun sessionId=<session>); do
+    nextflow lineage view $t | jq -r --arg h "lid://<task_hash>/" 'select(tostring | contains($h)) | .spec.name'
+done
+```
+
+One JVM per record, so ~1.5 s each. Faster, reading lineage's internal store directly: `grep -l lid://<task_hash>/ .lineage/*/.data.json`.
+
 Regenerate `openapi.json` after changing the contract:
 
 ```bash

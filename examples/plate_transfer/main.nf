@@ -3,9 +3,11 @@ nextflow.enable.types = true
 // Wet + dry: each plate of the plate map goes through a simulated liquid handler
 // (PLATE_TRANSFER, lab executor), then a report (PLATE_REPORT, local). The wet
 // result is flattened back to one record per well; the sample wells go on.
+// LAB_REPORT closes the run with the lab's side: every job of this session, failures too.
 
 include { PLATE_TRANSFER } from './modules/local/plate_transfer'
 include { PLATE_REPORT } from './modules/local/plate_report'
+include { LAB_REPORT } from './modules/local/lab_report'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,row,column,sample,type
@@ -32,11 +34,13 @@ workflow {
         .flatMap { p -> transferredWells(p) }
         // controls, blanks and wells read at 0 µL (e.g. a job a person resolved as done) stay in the plate report
         .filter { w -> w.type == 'sample' && (w.volume_ul as Double) > 0 }
+    lab_report = LAB_REPORT(transferred.map { p -> p.provenance }.collect())
 
     publish:
     plates = transferred
     reports = reports
     samples = samples
+    lab_report = lab_report
 }
 
 // One record per well of a transferred plate, from its result.json and provenance.json.
@@ -62,5 +66,8 @@ output {
             path 'samples.csv'  // one row per sample well: what the dry steps join on `sample`
             header true
         }
+    }
+    lab_report: Set<Path> {
+        path 'lab_report'  // lab_report.json and .tsv: every job of this session, failed attempts too
     }
 }

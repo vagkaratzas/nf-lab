@@ -30,6 +30,11 @@ Each submit also tells the ledger which Nextflow task collects the job: the task
 hash, read from the work dir's path (<work>/ab/cdef...), which is also the task's
 lineage id, and the session given with `--session`.
 
+`labctl report --session <id>` writes lab_report.json and lab_report.tsv: every job
+that session submitted or collected, every attempt (failures too), with the tasks
+that collected it. A pipeline's closing LAB_REPORT task runs it, so Nextflow's
+lineage records the lab's side too.
+
 Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 """
 
@@ -42,7 +47,9 @@ import signal
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -193,6 +200,33 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
 
+REPORT_COLUMNS = ("plate", "protocol", "attempt", "state", "device_id", "reason",
+                  "submitted_at", "started_at", "finished_at", "tasks")
+
+
+def report(args: argparse.Namespace) -> int:
+    client = Client(args.adapter, args.grace, args.poll)
+    try:
+        jobs = client.call("GET", "/jobs?" + urllib.parse.urlencode({"session": args.session}))
+    except Unreachable as e:
+        log(f"giving up: {e}")
+        return 69
+    except urllib.error.HTTPError as e:
+        log(f"refused: {e.code} {e.body}")
+        return 1
+    jobs = [{k: v for k, v in j.items() if k != "result"} for j in jobs]  # results are the tasks' own outputs
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    (outdir / "lab_report.json").write_text(json.dumps({"session_id": args.session, "jobs": jobs}, indent=2))
+    rows = ["\t".join(REPORT_COLUMNS)] + ["\t".join(
+        ",".join(f"lid://{c['task_hash']}" for c in j["collected_by"]) if col == "tasks" else str(j[col] or "")
+        for col in REPORT_COLUMNS) for j in jobs]
+    (outdir / "lab_report.tsv").write_text("\n".join(rows) + "\n")
+    states = Counter(j["state"] for j in jobs)
+    log(f"{len(jobs)} jobs in session {args.session}: " + ", ".join(f"{n} {s}" for s, n in states.items()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="labctl", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -212,7 +246,16 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
     r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
     r.add_argument("--session", help="the Nextflow session (${workflow.sessionId}); the ledger keeps it per job")
-    return run(p.parse_args(argv))
+    r.set_defaults(func=run)
+    rp = sub.add_parser("report", help="every job a Nextflow session submitted or collected, failures too")
+    rp.add_argument("--session", required=True, help="the Nextflow session (${workflow.sessionId})")
+    rp.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
+    rp.add_argument("--poll", type=float, default=2.0, help="seconds between retries")
+    rp.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
+    rp.add_argument("--outdir", default=".", help="where lab_report.json and lab_report.tsv go")
+    rp.set_defaults(func=report)
+    args = p.parse_args(argv)
+    return args.func(args)
 
 
 if __name__ == "__main__":

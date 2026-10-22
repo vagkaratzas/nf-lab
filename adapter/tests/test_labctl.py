@@ -13,7 +13,7 @@ import uvicorn
 
 from nf_lab_adapter.app import Device, create_app
 from nf_lab_adapter.backends import FakeBackend
-from nf_lab_adapter.labctl import Client, task_hash
+from nf_lab_adapter.labctl import REPORT_COLUMNS, Client, task_hash
 
 
 @contextmanager
@@ -158,3 +158,19 @@ def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
 def test_task_hash_is_read_from_a_nextflow_work_dir():
     assert task_hash(Path("/runs/work/ab") / ("c" * 30)) == "ab" + "c" * 30
     assert task_hash(Path("/tmp/somewhere")) is None
+
+
+def test_report_lists_a_sessions_attempts_with_their_lineage_ids(tmp_path):
+    first, retry = tmp_path / "work" / "ab" / ("c" * 30), tmp_path / "work" / "de" / ("f" * 30)
+    with serve(tmp_path) as (url, _):
+        assert finish(labctl(url, "preflight_once", out=first, session="s1"))[0] == 75
+        assert finish(labctl(url, "preflight_once", out=retry, session="s1"))[0] == 0
+        report = subprocess.run([sys.executable, "-m", "nf_lab_adapter.labctl", "report", "--session", "s1",
+                                 "--adapter", url, "--outdir", str(tmp_path / "r")], capture_output=True, text=True)
+        assert report.returncode == 0, report.stderr
+    jobs = json.loads((tmp_path / "r" / "lab_report.json").read_text())["jobs"]
+    assert [(j["attempt"], j["state"]) for j in jobs] == [(1, "failed_preflight"), (2, "done")]
+    assert "result" not in jobs[1]
+    header, *rows = (tmp_path / "r" / "lab_report.tsv").read_text().splitlines()
+    assert header.split("\t") == list(REPORT_COLUMNS)
+    assert [r.split("\t")[-1] for r in rows] == [f"lid://ab{'c' * 30}", f"lid://de{'f' * 30}"]
