@@ -145,24 +145,106 @@ process {
 
 `labctl` and the adapter talk through six calls: submit, status, lookup, safe_stop, release and session_jobs. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
 
-## The lab report
-
-A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
-
-From the ledger to lineage (the examples turn lineage on): `SELECT task_hash FROM collections JOIN jobs USING (job_id) WHERE device_id = 'liquid-handling-1'` lists the tasks that collected that device's jobs. In the launch dir (with a `nextflow.config` saying `lineage.enabled = true`: `nextflow lineage` doesn't read the pipeline's config), `nextflow lineage view lid://<task_hash>` shows one, and `nextflow lineage render lid://<task_hash>` its inputs (upstream). Lineage has no downstream command; to find what was built from the task, scan the session's task records:
-
-```bash
-for t in $(nextflow lineage find type=TaskRun sessionId=<session>); do
-    nextflow lineage view $t | jq -r --arg h "lid://<task_hash>/" 'select(tostring | contains($h)) | .spec.name'
-done
-```
-
-One JVM per record, so ~1.5 s each. Faster, reading lineage's internal store directly: `grep -l lid://<task_hash>/ .lineage/*/.data.json`.
-
 Regenerate `openapi.json` after changing the contract:
 
 ```bash
 uv run python -m nf_lab_adapter.app > openapi.json
+```
+
+## The lab report
+
+A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
+
+## Questions lineage answers
+
+The examples turn Nextflow's lineage on, so every task, its inputs and outputs, and the lab report are recorded in `.lineage/` of the launch folder. Run these from that folder. `nextflow lineage` reads only the launch folder's `nextflow.config`, never the pipeline's, so it needs `lineage.enabled = true` there (the dashboard's demos write it); without it, every command says `lineage store not loaded`. The ledger is wherever the adapter's `NF_LAB_LEDGER` points (`ledger.sqlite` in a demo folder).
+
+```bash
+echo 'lineage.enabled = true' > nextflow.config                # once, if the folder has none
+nextflow lineage list                                          # one row per run; a -resume keeps the session ID
+FIRST=$(nextflow lineage list | awk 'NR == 2 {print $NF}')     # the first run
+RUN=$(nextflow lineage list | awk 'END {print $NF}')           # the latest run
+SESSION=$(nextflow lineage view $RUN | jq -r .spec.sessionId)
+LEDGER=ledger.sqlite
+```
+
+### What did each run do?
+
+```bash
+for r in $(nextflow lineage list | awk 'NR > 1 {print $NF}'); do
+    echo $r; for t in $(nextflow lineage find type=TaskRun workflowRun=$r); do nextflow lineage view $t | jq -r .spec.name; done
+done
+```
+
+A run lists only the tasks it ran: after a failure and a `-resume`, the second run shows just what was left (the failed step, what waited on it, the lab report). Cached tasks keep the record of the run that ran them.
+
+### Which run made each published result?
+
+```bash
+for p in results/plates/*/; do
+    task=$(nextflow lineage view $RUN/plates/$(basename $p)/provenance.json | jq -r .spec.source | sed 's|/provenance.json||')
+    echo "$(basename $p) $(nextflow lineage view $task | jq -r .spec.workflowRun)"
+done
+```
+
+The latest run's `results/` is complete, but most of it may come from earlier runs of the session.
+
+### What happened to a plate, failures included?
+
+Lineage records only the attempt that worked; the lab report has every one, with the reason:
+
+```bash
+nextflow lineage find type=TaskRun name="WET:PLATE_READ (P4)"                     # one record
+awk -F'\t' 'NR == 1 || $1 == "P4"' results/lab_report/lab_report.tsv | cut -f1-6  # e.g. attempt 1 voided after an e-stop, attempt 2 done
+```
+
+### A device is suspect: what came off it, and what used it?
+
+From the ledger to lineage: the jobs of that device, the tasks that collected them (each a lineage id), and the records that use their outputs.
+
+```bash
+for h in $(sqlite3 $LEDGER "SELECT task_hash FROM collections JOIN jobs USING (job_id) WHERE device_id = 'plate-reading-1' AND state = 'done'"); do
+    nextflow lineage view lid://$h | jq -r .spec.name
+    grep -l "lid://$h/" .lineage/*/.data.json | xargs -n1 jq -r 'select(.kind == "TaskRun") | "  used by " + .spec.name'
+done
+```
+
+Lineage has no downstream command (`render` goes upstream), so this greps lineage's internal store. The same with the CLI only, slower (one JVM per record, ~1.5 s each):
+
+```bash
+for t in $(nextflow lineage find type=TaskRun sessionId=$SESSION); do
+    nextflow lineage view $t | jq -r --arg h "lid://<task_hash>/" 'select(tostring | contains($h)) | .spec.name'
+done
+```
+
+### Did anyone change a result after the run?
+
+```bash
+nextflow lineage check $RUN/samples.csv      # Checksum validation succeed
+```
+
+It compares path, size and modification time, not content: an edit fails it, and so does a copy that didn't keep the modification time.
+
+### What changed between two runs?
+
+```bash
+nextflow lineage diff $FIRST $RUN | grep '^[-+] '
+```
+
+For a run and its `-resume`: the run name, start time, `-resume` on the command line and `resume: <session>`. Any parameter or config change shows here too.
+
+### Where does a result come from?
+
+```bash
+nextflow lineage render $RUN/plates/P4/result.json && xdg-open lineage.html
+```
+
+The graph from that file back through the tasks that made it: the read, then its transfer. It stops there: the plate map is read by the workflow, not passed to a task as a file.
+
+### Every task of the session, across its runs
+
+```bash
+nextflow lineage find type=TaskRun sessionId=$SESSION | wc -l
 ```
 
 ## Tests
