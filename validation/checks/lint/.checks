@@ -1,2 +1,2 @@
 # Criterion: the pipelines pass strict-syntax parsing unchanged.
-"$NXF_CMD" lint "$VALIDATION" "$VALIDATION/../examples/plate_transfer" "$VALIDATION/../examples/hello"
+"$NXF_CMD" lint "$VALIDATION" "$VALIDATION/../examples/plate_transfer" "$VALIDATION/../examples/plate_assay" "$VALIDATION/../examples/hello"
