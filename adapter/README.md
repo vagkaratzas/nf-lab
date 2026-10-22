@@ -149,7 +149,7 @@ process {
 
 A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
 
-From the ledger to lineage (the examples turn lineage on): `SELECT task_hash FROM collections JOIN jobs USING (job_id) WHERE device_id = 'liquid-handling-1'` lists the tasks that collected that device's jobs. In the launch dir, `nextflow lineage view lid://<task_hash>` shows one, and `nextflow lineage render lid://<task_hash>` its inputs (upstream). Lineage has no downstream command; to find what was built from the task, scan the session's task records:
+From the ledger to lineage (the examples turn lineage on): `SELECT task_hash FROM collections JOIN jobs USING (job_id) WHERE device_id = 'liquid-handling-1'` lists the tasks that collected that device's jobs. In the launch dir (with a `nextflow.config` saying `lineage.enabled = true`: `nextflow lineage` doesn't read the pipeline's config), `nextflow lineage view lid://<task_hash>` shows one, and `nextflow lineage render lid://<task_hash>` its inputs (upstream). Lineage has no downstream command; to find what was built from the task, scan the session's task records:
 
 ```bash
 for t in $(nextflow lineage find type=TaskRun sessionId=<session>); do
