@@ -288,6 +288,22 @@ def test_a_queue_routes_a_job_to_its_robots(tmp_path):
         assert c.post("/jobs", json=req("k", queue="opentrons")).json()["job_id"] == job["job_id"]
 
 
+def test_a_job_goes_only_to_robots_that_run_its_protocol(tmp_path):
+    transfer_only = FakeBackend(0.05)
+    transfer_only.PROTOCOLS = {"plate_transfer"}  # another brand: same capability, fewer protocols
+    devices = [Device("fake-1", "liquid-handling", FakeBackend(0.05)), Device("fake-2", "liquid-handling", transfer_only)]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
+        load(c, "P1", "fake-2")
+        job = c.post("/jobs", json=req("k")).json()  # protocol ok: fake-1 only
+        assert c.get("/queue").json()[0]["waiting_for"] == "plate P1 is on fake-2, which doesn't run ok: unload it there"
+        c.post("/devices/fake-2/unload")
+        load(c, "P1", "fake-1")
+        assert wait(c, job["job_id"])["device_id"] == "fake-1"
+
+        r = c.post("/jobs", json=req("k2", "nope"))  # no robot runs it: refused, not a pre-flight failure later
+        assert r.status_code == 404 and "protocol 'nope'" in r.json()["detail"]
+
+
 def test_the_simulated_operator_loads_a_plate_only_where_its_queue_runs(tmp_path):
     devices = [Device(f"{q}-1", "liquid-handling", FakeBackend(0.05), simulated_operator=True, queue=q)
                for q in ("opentrons", "hamilton")]

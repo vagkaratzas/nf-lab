@@ -51,7 +51,8 @@ class Device:
     queue: str | None = None
 
     def takes(self, job: SubmitRequest) -> bool:
-        return job.capability == self.capability and job.queue in (None, self.queue)
+        return (job.capability == self.capability and job.queue in (None, self.queue)
+                and job.protocol in self.backend.PROTOCOLS)
 
 
 class Conflict(Exception):
@@ -118,7 +119,7 @@ class Adapter:
             wake.clear()
             if device.simulated_operator:
                 await self.operate(device)
-            job = self.ledger.next_runnable(device.device_id, device.capability, device.queue)
+            job = self.ledger.next_runnable(device.device_id, device.takes)
             if job is None:  # nothing queued for the plate on the deck, or the device is locked
                 await wake.wait()
                 continue
@@ -131,7 +132,7 @@ class Adapter:
             await self.unload(device, SIMULATED_OPERATOR)
         elif held:
             return
-        queue = self.ledger.queued(device.capability, device.queue)
+        queue = [j for j in self.ledger.queued() if device.takes(j)]
         if any(j.plate == self.ledger.plate(device.device_id) for j in queue):
             return  # the plate on the deck has work
         plate = next((j.plate for j in queue if self.ledger.where(j.plate) is None), None)
@@ -284,7 +285,9 @@ class Adapter:
         if on := self.ledger.where(job.plate):
             device = self.by_id[on]
             if device not in pool:
-                why = f"isn't in queue {job.queue}" if device.capability == job.capability else f"has no {job.capability}"
+                why = (f"has no {job.capability}" if device.capability != job.capability
+                       else f"isn't in queue {job.queue}" if job.queue not in (None, device.queue)
+                       else f"doesn't run {job.protocol}")
                 return f"plate {job.plate} is on {on}, which {why}: unload it there"
             status, text = self.status(device)
             if status == DeviceStatus.ready:
@@ -357,7 +360,7 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
         """Queue a job for the capability's pool, or return the existing one for this idempotency key."""
         if not any(d.takes(req) for d in devices):
             where = f" in queue {req.queue!r}" if req.queue else ""
-            raise HTTPException(404, f"no device for capability {req.capability!r}{where}")
+            raise HTTPException(404, f"no {req.capability!r} device{where} runs protocol {req.protocol!r}")
         try:
             job, created = ledger.submit(req)
         except KeyConflict:

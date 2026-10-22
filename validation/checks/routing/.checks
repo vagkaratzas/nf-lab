@@ -4,7 +4,7 @@ NF_LAB_DEVICES='liquid-handling/opentrons:1,liquid-handling/hamilton:1' start_ad
 WET_QUEUE=hamilton nf --plates 2
 [[ $(sql "SELECT count(*) FROM jobs WHERE queue = 'hamilton' AND device_id = 'hamilton-1' AND state = 'done'") == 2 ]]
 WET_QUEUE=tecan fails nf --plates 3
-grep -q "no device for capability 'liquid-handling' in queue 'tecan'" work/*/*/labctl.log
+grep -q "no 'liquid-handling' device in queue 'tecan' runs protocol 'ok'" work/*/*/labctl.log
 [[ $(sql "SELECT count(*) FROM jobs") == 2 ]]  # refused before the ledger
 nf --plates 4 --protocol plate_transfer  # new keys, no queue
 [[ $(sql "SELECT count(*) FROM jobs WHERE queue IS NULL AND state = 'done'") == 4 ]]

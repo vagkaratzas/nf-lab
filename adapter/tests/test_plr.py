@@ -52,10 +52,10 @@ def test_safe_stop_cancels_before_first_aspirate_and_finishes_after(tmp_path):
 
 def test_preflight_failures_touch_nothing(tmp_path):
     with adapter(tmp_path / "ledger.sqlite") as c:
-        for key, protocol, n in [("unknown", "pcr_setup", 2), ("off-plate", "plate_transfer", 97)]:  # 97th: A13
-            job = wait(c, submit(c, key, protocol, n)["job_id"])
-            assert (job["state"], job["stoppable"]) == ("failed_preflight", True), job
-            c.post(f"/jobs/{job['job_id']}/release")
+        job = wait(c, submit(c, "off-plate", "plate_transfer", 97)["job_id"])  # 97th: A13
+        assert (job["state"], job["stoppable"]) == ("failed_preflight", True), job
+        r = c.post("/jobs", json=req("unknown", "pcr_setup"))  # no robot runs it: refused before any robot
+        assert r.status_code == 404 and "runs protocol 'pcr_setup'" in r.json()["detail"]
 
 
 def test_a_reloaded_deck_runs_after_an_estop_mid_transfer(tmp_path):

@@ -14,12 +14,13 @@ Device pool: a job names a capability, not a device. It stays unbound
 (device_id NULL) while queued; the free device of that capability whose deck
 holds the job's plate takes it. A plate is on one deck at most, so one device
 can take it. A job may also name a queue: then only that queue's devices of the
-capability take it.
+capability take it. Which devices may take a job is the adapter's call (`takes`).
 """
 
 import json
 import sqlite3
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from .contract import FINAL, Job, SubmitRequest
@@ -153,10 +154,9 @@ class Ledger:
             (device_id,),
         ).fetchone())
 
-    def queued(self, capability: str | None = None, queue: str | None = None) -> list[Job]:
-        """Jobs a device of this capability and queue may take (capability None: all queued jobs), oldest first."""
-        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' AND (?1 IS NULL OR (capability = ?1"
-                               " AND (queue IS NULL OR queue = ?2))) ORDER BY rowid", (capability, queue))
+    def queued(self) -> list[Job]:
+        """Every queued job, oldest first."""
+        rows = self.db.execute("SELECT * FROM jobs WHERE state = 'queued' ORDER BY rowid")
         return [self._job(r) for r in rows]
 
     def last(self, device_id: str) -> Job | None:
@@ -164,12 +164,12 @@ class Ledger:
         return self._job(self.db.execute(
             "SELECT * FROM jobs WHERE device_id = ? ORDER BY started_at DESC LIMIT 1", (device_id,)).fetchone())
 
-    def next_runnable(self, device_id: str, capability: str, queue: str | None) -> Job | None:
-        """Oldest job the device may take for the plate on its deck; None while the device is locked."""
+    def next_runnable(self, device_id: str, takes: Callable[[Job], bool]) -> Job | None:
+        """Oldest job the device takes for the plate on its deck; None while the device is locked."""
         if self.held(device_id):
             return None
         plate = self.plate(device_id)
-        return next((j for j in self.queued(capability, queue) if j.plate == plate), None)
+        return next((j for j in self.queued() if j.plate == plate and takes(j)), None)
 
     def plate(self, device_id: str) -> str | None:
         row = self.db.execute("SELECT plate FROM decks WHERE device_id = ?", (device_id,)).fetchone()
