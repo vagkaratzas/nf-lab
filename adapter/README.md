@@ -151,6 +151,16 @@ Regenerate `openapi.json` after changing the contract:
 uv run python -m nf_lab_adapter.app > openapi.json
 ```
 
+### Conformance kit
+
+`conformance/` checks any adapter against `openapi.json`: it calls only the contract's operations, validates every reply against the file's schemas, and checks the guarantees (one key is one job, one job at a time per device, a safe stop never repeats material work, release only after the job finishes, a session lists its jobs). It needs only `pytest` and `jsonschema`, not this package. Point it at an adapter:
+
+```bash
+uv run pytest conformance --adapter http://127.0.0.1:8000
+```
+
+Use an adapter for testing, not one a lab is using: the kit submits jobs for plates it makes up (`CK-…`) and leaves them in the ledger. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter twice on free ports, `FakeBackend` and `PlrSimBackend`, and checks both; plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.
+
 ## The lab report
 
 A pipeline ends with `LAB_REPORT` (`examples/plate_transfer/modules/local/lab_report`), as an nf-core pipeline ends with MultiQC. It runs `labctl report --session ${workflow.sessionId}`, which writes `lab_report.json` and `lab_report.tsv`: every job that session submitted or collected, every attempt (failed ones too, which Nextflow's lineage doesn't record), each with the tasks that collected it as `lid://<task hash>`. The session ID is shared by a run and its `-resume`s, so the report of the run that completes includes the attempts of the runs that failed before it. Only this session's jobs: a ledger holds many runs.
