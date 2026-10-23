@@ -17,13 +17,13 @@ from nf_lab_adapter.labctl import REPORT_COLUMNS, Client, task_hash
 
 
 @contextmanager
-def serve(tmp_path, step: float = 0.05):
+def serve(tmp_path, step: float = 0.05, token: str | None = None):
     """The adapter on a real port, since labctl talks HTTP. Yields (url, stop)."""
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     app = create_app(str(tmp_path / "ledger.sqlite"),
-                     [Device("fake-1", "liquid-handling", FakeBackend(step), simulated_operator=True)])
+                     [Device("fake-1", "liquid-handling", FakeBackend(step), simulated_operator=True)], token=token)
     server = uvicorn.Server(uvicorn.Config(app, port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -174,3 +174,16 @@ def test_report_lists_a_sessions_attempts_with_their_lineage_ids(tmp_path):
     header, *rows = (tmp_path / "r" / "lab_report.tsv").read_text().splitlines()
     assert header.split("\t") == list(REPORT_COLUMNS)
     assert [r.split("\t")[-1] for r in rows] == [f"lid://ab{'c' * 30}", f"lid://de{'f' * 30}"]
+
+
+def test_labctl_sends_the_token_from_the_environment(tmp_path):
+    import os
+    with serve(tmp_path, token="t0ken") as (url, _):
+        env = {k: v for k, v in os.environ.items() if k != "NF_LAB_TOKEN"}
+        out = tmp_path / "none"
+        code, _ = finish(labctl(url, key="t1", out=out, env=env))
+        assert code == 1 and "refused: 401" in (out / "labctl.log").read_text()  # not retried: 69/75 only
+        code, job = finish(labctl(url, key="t1", env={**env, "NF_LAB_TOKEN": "t0ken"}))
+        assert code == 0 and job["state"] == "done"
+        assert "t0ken" not in (out / "labctl.log").read_text()  # the log never holds the token
+

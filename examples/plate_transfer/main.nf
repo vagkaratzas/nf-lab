@@ -8,6 +8,7 @@ nextflow.enable.types = true
 include { PLATE_TRANSFER } from './modules/local/plate_transfer'
 include { PLATE_REPORT } from './modules/local/plate_report'
 include { LAB_REPORT } from './modules/local/lab_report'
+include { labPlate } from 'plugin/nf-lab'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,row,column,sample,type
@@ -43,14 +44,14 @@ workflow {
     lab_report = lab_report
 }
 
-// One record per well of a transferred plate, from its result.json and provenance.json.
+// One record per well of a transferred plate: labPlate gives the plate's job and wells as data.
 // attempt and reason say how the job ended, e.g. "resolved as done by ana; was failed_in_protocol: ...".
 def transferredWells(p: Record) -> Iterable<Record> {
-    def job = new groovy.json.JsonSlurper().parseText(p.provenance.text) as Map<String,?>
-    return p.result.splitJson(path: 'wells').collect { w ->
-        record(sample: w.sample, type: w.type, plate: p.id, well: "${w.row}${w.column}",
-               volume_ul: w.volume_ul, job_id: job.job_id, device_id: job.device_id,
-               attempt: job.attempt, reason: job.reason ?: '')
+    def plate = labPlate(p.provenance, p.result)
+    return plate.wells.collect { w ->
+        record(sample: w.sample, type: w.type, plate: plate.plate, well: "${w.row}${w.column}",
+               volume_ul: w.volume_ul, job_id: plate.job_id, device_id: plate.device_id,
+               attempt: plate.attempt, reason: plate.reason ?: '')
     }
 }
 

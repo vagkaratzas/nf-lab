@@ -8,6 +8,7 @@ nextflow.enable.types = true
 include { WET } from './subworkflows/local/wet'
 include { ASSAY_REPORT } from './modules/local/assay_report'
 include { LAB_REPORT } from '../plate_transfer/modules/local/lab_report'
+include { labPlate } from 'plugin/nf-lab'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,row,column,sample,type
@@ -45,10 +46,10 @@ workflow {
 
 // One record per well of a read plate, with the machine that filled it and the one that read it.
 def readWells(p: Record) -> Iterable<Record> {
-    def transfer = new groovy.json.JsonSlurper().parseText(p.transfer.text) as Map<String,?>
-    def read = new groovy.json.JsonSlurper().parseText(p.provenance.text) as Map<String,?>
-    return p.result.splitJson(path: 'wells').collect { w ->
-        record(sample: w.sample, type: w.type, plate: p.id, well: "${w.row}${w.column}", absorbance: w.absorbance,
+    def transfer = labPlate(p.transfer)
+    def read = labPlate(p.provenance, p.result)
+    return read.wells.collect { w ->
+        record(sample: w.sample, type: w.type, plate: read.plate, well: "${w.row}${w.column}", absorbance: w.absorbance,
                transfer_device: transfer.device_id, read_device: read.device_id)
     }
 }

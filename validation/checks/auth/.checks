@@ -1,0 +1,13 @@
+# Criterion: the auth chain. An adapter with a token refuses wet tasks without it; a Nextflow
+# secret gives it to labctl, and the token never lands in the work dir or the run's log.
+TOKEN=s3cr3t-$RANDOM$RANDOM
+NF_LAB_TOKEN=$TOKEN start_adapter
+unset NF_LAB_TOKEN  # only the secret may give it to the tasks
+export NXF_SECRETS_FILE=$PWD/secrets.json  # this check's own store, not ~/.nextflow/secrets
+fails nf --plates 1
+grep -q "refused: 401" work/*/*/labctl.log
+[[ $(sql "SELECT count(*) FROM jobs") == 0 ]]
+"$NXF_CMD" secrets set NF_LAB_TOKEN "$TOKEN"
+nf --plates 2
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done'") == 2 ]]
+fails grep -rq "$TOKEN" work/ .nextflow.log

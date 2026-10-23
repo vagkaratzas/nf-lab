@@ -48,9 +48,27 @@
 // What the person typed, per robot: kept across the page's redraws until the action goes through.
 const chosen = {}, notes = {};
 
+// The adapter's token (NF_LAB_TOKEN), asked for when the adapter answers 401; kept for this tab only.
+let token = "";
+try { token = sessionStorage.getItem("nf-lab-token") || ""; } catch (e) {}
+const auth = () => token ? { Authorization: `Bearer ${token}` } : {};
+function askToken() {
+  if (document.getElementById("token")) return;  // already asking: keep what is being typed
+  document.getElementById("error").innerHTML = `The adapter needs its token:
+    <input id="token" type="password" aria-label="Adapter token" autocomplete="off">
+    <button onclick="useToken()">Use token</button>`;
+}
+function useToken() {
+  token = document.getElementById("token").value.trim();
+  try { sessionStorage.setItem("nf-lab-token", token); } catch (e) {}
+  document.getElementById("error").textContent = "";
+  refresh();
+}
+
 async function call(path, body) {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...auth() },
                                 body: JSON.stringify({ by: "operator", ...body }) });
+  if (r.status === 401) { askToken(); return false; }
   document.getElementById("error").textContent = r.ok ? "" : (await r.json()).detail;
   refresh();
   return r.ok;
@@ -105,8 +123,9 @@ function render(devices, queue) {
 
 async function refresh() {
   let rs;
-  try { rs = await Promise.all([fetch("devices"), fetch("queue")]); }
+  try { rs = await Promise.all([fetch("devices", { headers: auth() }), fetch("queue", { headers: auth() })]); }
   catch (e) { document.getElementById("error").textContent = "adapter unreachable"; return; }
+  if (rs.some(r => r.status === 401)) { askToken(); return; }
   const bad = rs.find(r => !r.ok);  // e.g. a page newer than the running adapter
   if (bad) { document.getElementById("error").textContent = `${bad.url}: HTTP ${bad.status}; restart the adapter?`; return; }
   render(await rs[0].json(), await rs[1].json());

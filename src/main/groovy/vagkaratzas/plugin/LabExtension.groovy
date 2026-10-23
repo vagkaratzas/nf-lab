@@ -16,14 +16,17 @@
 
 package vagkaratzas.plugin
 
+import java.nio.file.Files
+import java.nio.file.Path
+
+import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import nextflow.Session
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.PluginExtensionPoint
 
 /**
- * Implements a custom function which can be imported by
- * Nextflow scripts.
+ * Functions a pipeline imports with `include { labPlate } from 'plugin/nf-lab'`.
  */
 @CompileStatic
 class LabExtension extends PluginExtensionPoint {
@@ -33,13 +36,25 @@ class LabExtension extends PluginExtensionPoint {
     }
 
     /**
-     * Say hello to the given target.
-     *
-     * @param target
+     * A wet task's plate as plain data, for the pipeline to build its own record from:
+     * the job fields of `provenance.json` (device_id, job_id, attempt, reason, ...)
+     * with the fields of `result.json` on top (plate, and its wells with what was measured).
      */
     @Function
-    void sayHello(String target) {
-        println "Hello, ${target}!"
+    Map<String,Object> labPlate(Path provenance, Path result) {
+        return labPlate(provenance) + readJson(result)
+    }
+
+    /**
+     * A wet task's plate from its provenance alone: the job fields and the wells it was given.
+     */
+    @Function
+    Map<String,Object> labPlate(Path provenance) {
+        return readJson(provenance)
+    }
+
+    private static Map<String,Object> readJson(Path path) {
+        return Files.newBufferedReader(path).withCloseable { reader -> new JsonSlurper().parse(reader) as Map<String,Object> }
     }
 
 }

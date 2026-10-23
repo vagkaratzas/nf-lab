@@ -26,6 +26,10 @@ They come from the ledger: a key that is already done writes its stored outputs
 and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
+NF_LAB_TOKEN, if set, goes with every request as a bearer token (an adapter that
+sets a token refuses requests without it: exit 1, not retried). In a pipeline it comes
+from a Nextflow secret, so it never lands in the work dir.
+
 Each submit also tells the ledger which Nextflow task collects the job: the task
 hash, read from the work dir's path (<work>/ab/cdef...), which is also the task's
 lineage id, and the session given with `--session`.
@@ -101,7 +105,10 @@ class Client:
         # shortcut: every poll reply is logged in full (~700 B), dedupe unchanged replies if multi-day runs make it big.
         data = json.dumps(body).encode() if body is not None else None
         log(f"-> {method} {path}" + (f" {data.decode()}" if data else ""), quiet=True)
-        req = urllib.request.Request(self.url + path, data, {"Content-Type": "application/json"}, method=method)
+        headers = {"Content-Type": "application/json"}
+        if token := os.environ.get("NF_LAB_TOKEN"):  # env only, never an argument: .command.sh is in the work dir
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(self.url + path, data, headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 reply = r.read().decode()

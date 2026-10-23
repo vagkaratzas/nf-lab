@@ -18,6 +18,7 @@ Settings (environment):
   NF_LAB_LEDGER         the adapter's ledger (default adapter/ledger.sqlite); the
                         request log is next to it (<ledger>.requests.jsonl)
   NF_LAB_NEXTFLOW_LOG   the run's log (default examples/plate_transfer/.nextflow.log)
+  NF_LAB_TOKEN          the adapter's token, if it sets one
 """
 
 import json
@@ -33,7 +34,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-from .demo import EXAMPLES, Busy, Demo, Settings
+from .demo import EXAMPLES, Busy, Demo, Settings, auth
 
 NF_LAB = Path(__file__).parents[3]  # dashboard/src/nf_lab_dashboard/app.py -> nf-lab
 
@@ -123,7 +124,7 @@ def adapter_calls(log: Path, ledger: Path, limit: int = 40) -> list[dict]:
 
 def robots(adapter: str, ledger: Path) -> dict:
     try:
-        with urllib.request.urlopen(f"{adapter}/devices", timeout=1) as r:
+        with urllib.request.urlopen(urllib.request.Request(f"{adapter}/devices", headers=auth()), timeout=1) as r:
             devices = json.load(r)
     except OSError as e:
         return {"error": f"adapter unreachable at {adapter}: {e}"}

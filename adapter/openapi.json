@@ -10,6 +10,11 @@
         "summary": "Submit",
         "description": "Queue a job for the capability's pool, or return the existing one for this idempotency key.",
         "operationId": "submit",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -30,6 +35,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
           },
           "200": {
             "description": "Key already in the ledger: the existing job, nothing new runs",
@@ -63,6 +71,11 @@
         "summary": "Session Jobs",
         "description": "Every job a Nextflow session submitted or collected, every attempt (failures too), with the tasks\nthat collected it: each task hash is that task's lineage id. What `labctl report` writes.",
         "operationId": "session_jobs",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "session",
@@ -89,6 +102,9 @@
               }
             }
           },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -107,6 +123,11 @@
         "summary": "Status",
         "description": "State, phase reached, stop boundary and device heartbeat.",
         "operationId": "status",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "job_id",
@@ -128,6 +149,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
           },
           "404": {
             "description": "Not Found"
@@ -150,6 +174,11 @@
         "summary": "Lookup",
         "description": "Find a job after a head restart: the live job for the key, else its latest attempt.",
         "operationId": "lookup",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "idempotency_key",
@@ -172,6 +201,9 @@
               }
             }
           },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
+          },
           "404": {
             "description": "Not Found"
           },
@@ -193,6 +225,11 @@
         "summary": "Safe Stop",
         "description": "Cancel while stoppable (counts as a pre-flight failure); after the boundary, let it finish.",
         "operationId": "safe_stop",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "job_id",
@@ -214,6 +251,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
           },
           "404": {
             "description": "Not Found"
@@ -236,6 +276,11 @@
         "summary": "Release",
         "description": "The finished plate is off the deck: unlock the device. Called by the person who unloads it. Idempotent.",
         "operationId": "release",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "job_id",
@@ -257,6 +302,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or wrong bearer token (the adapter sets one)"
           },
           "404": {
             "description": "Not Found"
@@ -915,6 +963,13 @@
           "blank"
         ],
         "title": "WellType"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "The adapter's token (NF_LAB_TOKEN); required when the adapter sets one",
+        "scheme": "bearer"
       }
     }
   }

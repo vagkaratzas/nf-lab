@@ -53,6 +53,7 @@ The defaults match these commands. Change them with:
 |---|---|
 | `NF_LAB_ADAPTER` | `http://127.0.0.1:8000` |
 | `NF_LAB_LEDGER` | `adapter/ledger.sqlite` (the request log is `<ledger>.requests.jsonl` next to it) |
+| `NF_LAB_TOKEN` | unset: the adapter's token, if it sets one; a demo's own adapter gets it too |
 | `NF_LAB_NEXTFLOW_LOG` | `examples/plate_transfer/.nextflow.log` |
 
 ## Tests

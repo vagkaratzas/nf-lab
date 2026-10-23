@@ -461,3 +461,27 @@ def test_deck_page_is_served_and_the_operator_api_stays_out_of_the_contract(tmp_
     spec = json.loads((Path(__file__).parents[1] / "openapi.json").read_text())
     assert set(spec["paths"]) == {"/jobs", "/jobs/{job_id}", "/lookup/{idempotency_key}",
                                   "/jobs/{job_id}/safe_stop", "/jobs/{job_id}/release"}
+
+
+def test_a_token_guards_every_route_but_the_deck_page(tmp_path):
+    c = TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                              [Device("fake-1", "liquid-handling", FakeBackend(0.05), simulated_operator=True)],
+                              token="t0ken"))
+    ok = {"Authorization": "Bearer t0ken"}
+    with c:
+        calls = [("post", "/jobs", req("a")), ("get", "/jobs?session=s", None), ("get", "/jobs/x", None),
+                 ("get", "/lookup/x", None), ("post", "/jobs/x/safe_stop", None), ("post", "/jobs/x/release", None),
+                 ("get", "/devices", None), ("get", "/queue", None), ("post", "/devices/fake-1/load", {"plate": "P1"}),
+                 ("post", "/devices/fake-1/unload", None), ("post", "/devices/fake-1/estop", None),
+                 ("post", "/jobs/x/resolve", {"outcome": "void"})]
+        for method, path, body in calls:
+            for headers in ({}, {"Authorization": "Bearer wrong"}, {"Authorization": "Basic dDBrZW4="}):
+                r = c.request(method, path, json=body, headers=headers)
+                assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer", (path, headers)
+        assert c.post("/jobs", json=req("a"), headers=ok).status_code == 201
+        assert c.get("/devices", headers=ok).status_code == 200
+        assert c.get("/deck").status_code == 200  # the page itself; its buttons' calls carry the token
+    open_app = adapter(tmp_path / "open.sqlite")  # no token: open, as before
+    with open_app:
+        assert open_app.get("/devices").status_code == 200
+

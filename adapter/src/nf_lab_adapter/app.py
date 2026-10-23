@@ -15,6 +15,7 @@ Two APIs:
 import asyncio
 import json
 import os
+import secrets
 import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -23,9 +24,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from .backends import Backend, DeviceStopped, FakeBackend
@@ -301,7 +303,11 @@ class Adapter:
         return f"plate {job.plate} isn't on any deck and no {job.capability} device{where} is free: {busy}"
 
 
-def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
+bearer = HTTPBearer(auto_error=False, description="The adapter's token (NF_LAB_TOKEN); required when the adapter sets one")
+
+
+def create_app(ledger_path: str, devices: list[Device], token: str | None = None) -> FastAPI:
+    """token: every request must carry `Authorization: Bearer <token>`; None: no check (lab network only)."""
     ledger = Ledger(ledger_path)
     adapter = Adapter(ledger, devices)
 
@@ -316,7 +322,18 @@ def create_app(ledger_path: str, devices: list[Device]) -> FastAPI:
             w.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
 
-    app = FastAPI(title="nf-lab device adapter", version="0.1.0", lifespan=lifespan)
+    def check_token(request: Request, cred: HTTPAuthorizationCredentials | None = Depends(bearer)) -> None:
+        # One dependency on the whole app, so no route (or a later one) can skip the check.
+        # The deck page's HTML holds nothing secret; its buttons' calls carry the token.
+        if token is None or request.url.path == "/deck":
+            return
+        if cred is None or not secrets.compare_digest(cred.credentials.encode(), token.encode()):
+            raise HTTPException(401, "missing or wrong bearer token: set NF_LAB_TOKEN to the adapter's token",
+                                headers={"WWW-Authenticate": "Bearer"})
+
+    app = FastAPI(title="nf-lab device adapter", version="0.1.0", lifespan=lifespan,
+                  dependencies=[Depends(check_token)],
+                  responses={401: {"description": "Missing or wrong bearer token (the adapter sets one)"}})
 
     # Request log for the dashboard: the contract calls and operator actions, one JSON line each.
     # shortcut: never rotated; fine for demo runs, rotate if the adapter runs for weeks.
@@ -492,6 +509,7 @@ def main() -> FastAPI:
     with plr, NF_LAB_VISUALIZER=1 serves PyLabRobot's browser view of the deck.
     NF_LAB_SIMULATED_OPERATOR=1 or 0: default 1 for fake (tests, CI), 0 for plr,
     so a person loads and unloads plates on the deck page.
+    NF_LAB_TOKEN: every request must carry it as a bearer token; unset: no check.
     """
     step = float(os.environ.get("NF_LAB_STEP", "1.0"))
     plr = os.environ.get("NF_LAB_BACKEND", "fake") == "plr"
@@ -509,6 +527,7 @@ def main() -> FastAPI:
                 silent_after=float(os.environ.get("NF_LAB_SILENT_AFTER", "600")),
                 simulated_operator=os.environ.get("NF_LAB_SIMULATED_OPERATOR", "0" if plr else "1") == "1")
          for device_id, capability, queue in device_specs(os.environ.get("NF_LAB_DEVICES", "1"), prefix)],
+        token=os.environ.get("NF_LAB_TOKEN") or None,
     )
 
 

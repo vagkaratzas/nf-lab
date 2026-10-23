@@ -6,6 +6,8 @@ nextflow.enable.types = true
 // As a declared output, it puts the device ledger's history into Nextflow's lineage.
 // Its input is every wet task's provenance, so it runs last and again whenever one changes.
 process LAB_REPORT {
+    label 'process_lab'  // dry, but asks the adapter: gets its token
+
     input:
     provenance: Bag<Path>
 
