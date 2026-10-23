@@ -28,6 +28,7 @@ Settings (environment variables):
 | `NF_LAB_LEDGER` | `ledger.sqlite` | The ledger file. Keep it between runs: it is what stops a job from running twice |
 | `NF_LAB_STEP` | `1.0` | Seconds per simulated robot step |
 | `NF_LAB_SILENT_AFTER` | `600` | Seconds without a report from a robot before its job fails as `device_silent` |
+| `NF_LAB_TOKEN` | unset | Every request must carry it as `Authorization: Bearer <token>`, the deck page's buttons included; unset: no check. See [The token](#the-token) |
 
 ## Three questions the adapter answers
 
@@ -141,6 +142,30 @@ process {
 
 `labctl` exits with `0` when the job is done and with `75` when it failed before any liquid moved, which is safe to retry. `69` means the adapter couldn't be reached, so the outcome is unknown: the retry asks the ledger with the same key, so nothing runs twice. `1` covers every other failure, which needs a person. `finish`, not `terminate`, ends the run after a failure without stopping the other robots: a job already running completes its plate, and nothing new starts. Set `errorStrategy = 'finish'` for the dry processes too, so a software error doesn't stop the robots either. Aborting the run (Ctrl-C) stops a job safely if no liquid has moved yet, and otherwise lets it finish.
 
+## The token
+
+With `NF_LAB_TOKEN` set, the adapter refuses any request without it (401): the job API, the deck controls, `/devices` and `/queue`. Only the deck page's HTML and `/docs` load without it. Every client sends it:
+
+- **A pipeline:** store it once as a Nextflow secret. The examples' config hands it to every task that calls the adapter when it exists, so the value never lands in the work dir (`.command.run` reads it from Nextflow's secrets store) or in `labctl.log`:
+
+  ```bash
+  nextflow secrets set NF_LAB_TOKEN <token>
+  ```
+
+  ```groovy
+  process {
+      withLabel: 'process_wet|process_lab' { secret = secrets.NF_LAB_TOKEN ? ['NF_LAB_TOKEN'] : [] }
+  }
+  ```
+
+  `process_lab` marks a dry task that calls the adapter (`LAB_REPORT`); the wet tasks have `process_wet`.
+
+  A wrong or missing token makes `labctl` exit 1: refused, not retried.
+- **`labctl` by hand, the dashboard, the conformance kit:** `NF_LAB_TOKEN` in their environment. Never as an argument: a wet task's command line is saved in its work dir.
+- **The deck page:** asks for the token when the adapter refuses it, and keeps it for that browser tab.
+
+Plain HTTP sends the token in the clear: lab network only. Later: TLS through a reverse proxy in front of the adapter, and an operator token apart from the pipelines' token, so a pipeline can't void a job.
+
 ## The contract
 
 `labctl` and the adapter talk through six calls: submit, status, lookup, safe_stop, release and session_jobs. `openapi.json` is that contract. Another adapter (for SiLA 2 or a vendor's API) can implement the same file, and the pipelines don't change. The deck page's calls (`/devices`, `/queue`, load, unload, e-stop, resolve) are not part of the contract: a real lab may do these in the vendor's software instead.
@@ -156,7 +181,7 @@ uv run python -m nf_lab_adapter.app > openapi.json
 `conformance/` checks any adapter against `openapi.json`: it calls only the contract's operations, validates every reply against the file's schemas, and checks the guarantees (one key is one job, one job at a time per device, a safe stop never repeats material work, release only after the job finishes, a session lists its jobs). It needs only `pytest` and `jsonschema`, not this package. Point it at an adapter:
 
 ```bash
-uv run pytest conformance --adapter http://127.0.0.1:8000
+uv run pytest conformance --adapter http://127.0.0.1:8000    # its token, if any, in NF_LAB_TOKEN
 ```
 
 Use a simulation adapter for testing, never one a lab is using: the kit submits real jobs for plates it makes up (`CK-…`), which on real robots would move liquid, and leaves them in the ledger. Each `--adapter` run starts with this warning. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter twice on free ports, `FakeBackend` and `PlrSimBackend`, and checks both; plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.

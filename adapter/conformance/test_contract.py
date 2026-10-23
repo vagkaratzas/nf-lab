@@ -120,6 +120,16 @@ def test_a_session_lists_its_jobs_with_the_tasks_that_collected_them(api, opts):
     api("release", job_id=job_id)
 
 
+def test_every_operation_refuses_a_missing_or_wrong_token(api):
+    if not api.token:
+        pytest.skip("no token given (--token or NF_LAB_TOKEN): an adapter without one is open")
+    for op, (method, path, _) in api.ops.items():
+        params = {name.strip("{}"): "x" for name in path.split("/") if name.startswith("{")}
+        args = {"body": {} if method == "POST" else None, "query": {"session": "x"} if op == "session_jobs" else None}
+        for token in (None, api.token + "-wrong"):
+            assert api(op, token=token, **args, **params).status == 401, f"{op} with token {token!r}"
+
+
 def test_every_operation_in_the_spec_was_checked(api, request):
     """Keep last: a new operation in openapi.json needs a check here."""
     this = request.node.callspec.id

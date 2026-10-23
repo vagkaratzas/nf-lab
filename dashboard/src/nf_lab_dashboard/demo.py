@@ -50,6 +50,11 @@ class Settings:
     runs: Path | None = None  # one folder per scenario (ledger, logs, results); default nf-lab/build/demo
 
 
+def auth() -> dict:
+    """The adapter's bearer token from NF_LAB_TOKEN, if set (the demo's own adapter inherits it too)."""
+    return {"Authorization": f"Bearer {t}"} if (t := os.environ.get("NF_LAB_TOKEN")) else {}
+
+
 # example -> (title, the adapter's NF_LAB_DEVICES, the scenarios scripted for it). Manual runs any example.
 EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
     "plate_transfer": ("Plate transfer", "2", ["pool", "estop", "manual"]),
@@ -161,7 +166,7 @@ class Demo:
         def call():
             data = json.dumps(body if body is not None else {"by": "demo operator"}).encode() if method == "POST" else None
             req = urllib.request.Request(self.url + path, data=data, method=method,
-                                         headers={"Content-Type": "application/json"})
+                                         headers={"Content-Type": "application/json", **auth()})
             with urllib.request.urlopen(req, timeout=5) as r:
                 return json.load(r)
         return await asyncio.to_thread(call)
