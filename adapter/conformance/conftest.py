@@ -35,6 +35,12 @@ def pytest_addoption(parser):
     g.addoption("--job-timeout", type=float, default=120, help="seconds a job may take to finish")
 
 
+def pytest_report_header(config):
+    if url := config.getoption("adapter"):
+        return [f"WARNING: the kit submits real jobs to {url} and leaves them in its ledger. "
+                "Run it against a simulation adapter only, never one driving real robots."]
+
+
 def pytest_generate_tests(metafunc):
     if "url" in metafunc.fixturenames:
         given = metafunc.config.getoption("adapter")

@@ -159,7 +159,7 @@ uv run python -m nf_lab_adapter.app > openapi.json
 uv run pytest conformance --adapter http://127.0.0.1:8000
 ```
 
-Use an adapter for testing, not one a lab is using: the kit submits jobs for plates it makes up (`CK-…`) and leaves them in the ledger. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter twice on free ports, `FakeBackend` and `PlrSimBackend`, and checks both; plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.
+Use a simulation adapter for testing, never one a lab is using: the kit submits real jobs for plates it makes up (`CK-…`), which on real robots would move liquid, and leaves them in the ledger. Each `--adapter` run starts with this warning. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter twice on free ports, `FakeBackend` and `PlrSimBackend`, and checks both; plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.
 
 ## The lab report
 
