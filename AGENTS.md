@@ -9,3 +9,9 @@ Nextflow executor plugin for robotic wet-lab steps (prototype). Design, concerns
 - **CI (`.github/workflows/ci.yml`):** job `test` (`make test`, adapter and dashboard pytest, `validation/run.sh lint`) on every push; job `validation` (all checks) on PRs, `main` and manual runs: `gh workflow run CI --ref <branch>`. Nextflow 26.10.2 only.
 - **Branches:** work on `dev`; `main` gets reviewed PRs from `dev` (Adam reviews, CI green). By agreement, not enforced: GitHub has no branch protection for private repos on the free plan; add the rules when the repo goes public. The owner may push to `main` directly.
 - **Java:** builds use SDKMAN Java 17, the default `$JAVA_HOME`. Don't point `JAVA_HOME` at base conda: its Java is 1.7 and its `jre/` breaks Gradle's TLS download. All other tools come from base conda (`~/miniconda3/bin/<tool>`).
+
+## nf-lab adapter / dashboard dev
+- Before starting the adapter or running e2e tests, check for stale processes and env vars: `lsof -i :8000 -i :8100` and `env | grep NF_LAB_ADAPTER`. Kill orphaned adapters and unset stale ports first.
+- E2E timing assertions must use generous windows, because GitHub CI runners are much slower than local. Never assert sub-second timings.
+- Work feature by feature: implement ONE plan item, test it, commit it, then stop and check in before the next.
+- Don't add unrequested commits (helper notes, etc.).
