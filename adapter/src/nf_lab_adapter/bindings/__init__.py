@@ -21,11 +21,10 @@ Two more calls come from a person (or the simulated operator), never from a job:
   person resolves a failed job as done after checking the deck.
 """
 
-import asyncio
 import zlib
 from typing import Protocol
 
-from .contract import Job, State, Well, WellType
+from ..contract import Job, State, Well, WellType
 
 ABSORBANCE_NM = 450
 
@@ -60,52 +59,3 @@ class Backend(Protocol):
     async def run(self, job: Job, progress: Progress) -> dict: ...
     async def load(self, plate: str | None) -> None: ...
     async def read_result(self, job: Job) -> dict: ...
-
-
-class FakeBackend:
-    """Scripted device for tests. The protocol name picks the script.
-
-    `plate_transfer` runs like `ok` and returns PlrSimBackend's result shape
-    (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
-    `plate_read` returns PlrReaderBackend's and, like a reader, never crosses the stop boundary."""
-
-    PROTOCOLS = {"ok", "plate_transfer", "plate_read", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
-    viewer = None
-
-    def __init__(self, step: float = 0.05):
-        self.step = step  # seconds per simulated step
-
-    async def setup(self) -> None:
-        pass
-
-    async def load(self, plate: str | None) -> None:
-        pass
-
-    async def read_result(self, job: Job) -> dict:
-        if job.protocol == "plate_read":
-            return reading(job)
-        if job.protocol == "plate_transfer":
-            return {"plate": job.plate, "wells": [{**w.model_dump(mode="json"), "volume_ul": 150.0} for w in job.wells]}
-        return {"wells": len(job.wells)}
-
-    async def run(self, job: Job, progress: Progress) -> dict:
-        script = job.protocol
-        await asyncio.sleep(self.step)  # deck check
-        progress()
-        if script not in self.PROTOCOLS:
-            raise ValueError(f"unknown protocol {script!r}")
-        if script == "preflight_fail" or (script == "preflight_once" and job.attempt == 1):
-            raise RuntimeError("deck check failed: tip rack missing")
-        progress(state=State.running)
-        await asyncio.sleep(self.step)
-        if script != "plate_read":
-            progress(stoppable=False)  # first aspirate: material is now touched
-        if script == "silent":
-            await asyncio.Event().wait()  # device stops reporting, forever
-        if script == "estop":
-            raise DeviceStopped("e-stop pressed at the deck")
-        await asyncio.sleep(self.step)
-        progress()
-        if script == "protocol_fail":
-            raise RuntimeError("tip pickup failed mid-transfer")
-        return await self.read_result(job)

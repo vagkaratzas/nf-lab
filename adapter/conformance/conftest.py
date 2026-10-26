@@ -1,7 +1,7 @@
 """Conformance kit: checks a running adapter against the device-job contract (openapi.json).
 
     uv run pytest conformance --adapter http://lab-host:8000    # any adapter
-    uv run pytest conformance                                   # this repo's, FakeBackend and PlrSimBackend
+    uv run pytest conformance                                   # this repo's, FakeBackend and PlrLiquidHandlerBackend
 
 The kit calls only the contract's operations and validates every reply against the spec.
 Loading a plate is an operator action, outside the contract, so the adapter under test must

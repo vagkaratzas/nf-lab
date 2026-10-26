@@ -12,7 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.backends import FakeBackend
+from nf_lab_adapter.bindings.fake import FakeBackend
 from nf_lab_adapter.labctl import REPORT_COLUMNS, Client, task_hash
 
 

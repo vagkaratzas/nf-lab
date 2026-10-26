@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.plr import PlrReaderBackend, PlrSimBackend
+from nf_lab_adapter.bindings.plr import PlrPlateReaderBackend, PlrLiquidHandlerBackend
 from test_adapter import req, wait, wells
 
 
 def adapter(ledger, step: float = 0.0) -> TestClient:
-    return TestClient(create_app(str(ledger), [Device("plr-sim-1", "liquid-handling", PlrSimBackend(step),
+    return TestClient(create_app(str(ledger), [Device("plr-sim-1", "liquid-handling", PlrLiquidHandlerBackend(step),
                                                       simulated_operator=True)]))
 
 
@@ -17,7 +17,7 @@ def submit(c: TestClient, key: str, protocol: str = "plate_transfer", n: int = 1
 
 
 def test_transfer_fills_the_plate_map_wells_from_their_source(tmp_path):
-    backend = PlrSimBackend(0.0)
+    backend = PlrLiquidHandlerBackend(0.0)
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("plr-sim-1", "liquid-handling", backend)])) as c:
         plate_map = wells("A1:S1", "C1:S2", "D2:NC1:negative_control", "H12:BLK1:blank", "A12:S3")
         job = c.post("/jobs", json=req("k", "plate_transfer", plate="P7", wells=plate_map)).json()
@@ -74,8 +74,8 @@ def test_a_reloaded_deck_runs_after_an_estop_mid_transfer(tmp_path):
 
 
 def test_reader_reads_a_transferred_plate(tmp_path):
-    devices = [Device("plr-sim-1", "liquid-handling", PlrSimBackend(0.0), simulated_operator=True),
-               Device("plate-reading-1", "plate-reading", PlrReaderBackend(0.0), simulated_operator=True)]
+    devices = [Device("plr-sim-1", "liquid-handling", PlrLiquidHandlerBackend(0.0), simulated_operator=True),
+               Device("plate-reading-1", "plate-reading", PlrPlateReaderBackend(0.0), simulated_operator=True)]
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
         plate_map = wells("A1:S1", "D2:NC1:negative_control", "H12:BLK1:blank")
         transfer = wait(c, c.post("/jobs", json=req("t", "plate_transfer", wells=plate_map)).json()["job_id"])
@@ -88,7 +88,7 @@ def test_reader_reads_a_transferred_plate(tmp_path):
 
 
 def test_reader_without_a_known_well_fails_preflight(tmp_path):
-    devices = [Device("plate-reading-1", "plate-reading", PlrReaderBackend(0.0), simulated_operator=True)]
+    devices = [Device("plate-reading-1", "plate-reading", PlrPlateReaderBackend(0.0), simulated_operator=True)]
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
         job = c.post("/jobs", json=req("r", "plate_read", capability="plate-reading", wells=wells("A13:S1"))).json()
         assert wait(c, job["job_id"])["state"] == "failed_preflight"

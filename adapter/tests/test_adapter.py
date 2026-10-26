@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, contract_spec, create_app, device_specs
-from nf_lab_adapter.backends import FakeBackend, absorbance
+from nf_lab_adapter.bindings import absorbance
+from nf_lab_adapter.bindings.fake import FakeBackend
 from nf_lab_adapter.contract import Well
 
 FINAL = {"done", "failed_preflight", "failed_in_protocol", "stopped", "voided"}

@@ -30,7 +30,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
-from .backends import Backend, DeviceStopped, FakeBackend
+from .bindings import Backend, DeviceStopped
+from .bindings.fake import FakeBackend
 from .contract import FINAL, CollectedJob, Job, JobSpec, State, SubmitRequest
 from .ledger import KeyConflict, Ledger, now
 
@@ -514,10 +515,10 @@ def main() -> FastAPI:
     step = float(os.environ.get("NF_LAB_STEP", "1.0"))
     plr = os.environ.get("NF_LAB_BACKEND", "fake") == "plr"
     if plr:
-        from .plr import PlrReaderBackend, PlrSimBackend  # imported only when used: PyLabRobot is heavy
+        from .bindings.plr import PlrPlateReaderBackend, PlrLiquidHandlerBackend  # imported only when used: PyLabRobot is heavy
         prefix = "plr-sim"
         def backend(capability: str) -> Backend:
-            binding = PlrReaderBackend if capability == "plate-reading" else PlrSimBackend
+            binding = PlrPlateReaderBackend if capability == "plate-reading" else PlrLiquidHandlerBackend
             return binding(step=step, visualize=os.environ.get("NF_LAB_VISUALIZER") == "1")
     else:
         prefix, backend = "fake", lambda _: FakeBackend(step=step)

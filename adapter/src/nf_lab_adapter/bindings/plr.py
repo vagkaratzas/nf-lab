@@ -23,8 +23,8 @@ from pylabrobot.resources import (
 )
 from pylabrobot.visualizer import Visualizer
 
-from .backends import ABSORBANCE_NM, Progress, absorbance, reading
-from .contract import Job, State, WellType
+from . import ABSORBANCE_NM, Progress, absorbance, reading
+from ..contract import Job, State, WellType
 
 CHANNELS = 8
 SAMPLE_UL = 300.0  # what each source well holds (of 360 µL): the visualizer shades by volume / max
@@ -32,7 +32,7 @@ SAMPLE_UL = 300.0  # what each source well holds (of 360 µL): the visualizer sh
 set_volume_tracking(True)  # process-wide: wells track volume, so a transfer is checkable
 
 
-class PlrSimBackend:
+class PlrLiquidHandlerBackend:
     """`plate_transfer`: fill each plate-map well of the destination plate with
     `volume_ul` from the same well of its source: the sample plate for samples,
     the buffer plate for controls and blanks. One column at a time, one channel
@@ -129,7 +129,7 @@ class PlrSimBackend:
         return tips, src, buf, dst
 
 
-class PlrReaderBackend:
+class PlrPlateReaderBackend:
     """`plate_read`: read the absorbance of each plate-map well. A person's load puts a
     plate in the reader, an unload takes it out. Reading moves no liquid, so the job
     never crosses the stop boundary: a failed or safe-stopped read can run again
