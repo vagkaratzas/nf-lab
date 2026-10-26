@@ -2,7 +2,7 @@
 # default is one plate, for demos): each plate split into
 # an RNA and a DNA aliquot on one of two liquid handlers; the two extractions run side by side on
 # both; every eluate goes through PCR on the thermocycler; yields reach QC and samples.csv.
-NF_LAB_DEVICES=liquid-handling:2,thermocycling:1 start_adapter
+NF_LAB_DEVICES=liquid-handling:2,thermocycling:1 NF_LAB_STEP=1 start_adapter  # ~3 s per job: the two extractions overlap even on a slow runner
 "$NXF_CMD" -q run "$VALIDATION/../examples/parallel_extraction" -ansi-log false -output-dir results \
     --plate_map "$VALIDATION/../examples/plate_transfer/plate_map.csv"
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'plate_split'") == 4 ]]
