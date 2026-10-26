@@ -1,4 +1,4 @@
-"""PyLabRobot bindings on simulated (chatterbox) machines: a liquid handler and a plate reader.
+"""PyLabRobot bindings on simulated (chatterbox) machines: a liquid handler, a plate reader and a thermocycler.
 
 PyLabRobot is a library with no job service, so the binding runs the protocol
 in-process. One simulated robot and deck live as long as the adapter: tips, a
@@ -18,12 +18,13 @@ from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.liquid_handling.backends import LiquidHandlerChatterboxBackend
 from pylabrobot.plate_reading import PlateReader, PlateReaderChatterboxBackend
 from pylabrobot.resources import (
-    PLT_CAR_L5AC_A00, TIP_CAR_480_A00, STARLetDeck, cor_96_wellplate_360uL_Fb,
+    PLT_CAR_L5AC_A00, Coordinate, TIP_CAR_480_A00, STARLetDeck, cor_96_wellplate_360uL_Fb,
     hamilton_96_tiprack_1000uL_filter, set_volume_tracking,
 )
+from pylabrobot.thermocycling import Thermocycler, ThermocyclerChatterboxBackend
 from pylabrobot.visualizer import Visualizer
 
-from . import ABSORBANCE_NM, Progress, absorbance, reading
+from . import ABSORBANCE_NM, PCR, Progress, absorbance, amplified, reading
 from ..contract import Job, State, WellType
 
 CHANNELS = 8
@@ -188,3 +189,72 @@ class PlrPlateReaderBackend:
         progress()
         return {**reading(job), "wells": [{**w.model_dump(mode="json"), "absorbance": data[rows.index(w.row)][w.column - 1]}
                                            for w in job.wells]}  # what the reader read
+
+
+class PlrThermocyclerBackend:
+    """`pcr`: run the plate through the PCR program (`PCR`): lid closed and heated,
+    initial denaturation, the cycles, final extension, then a cold hold, lid open.
+    A person's load puts the plate on the block, an unload takes it off. Cycling
+    can't be undone, so the job crosses the stop boundary as the program starts:
+    a safe stop before that leaves the plate as it was loaded."""
+
+    PROTOCOLS = {"pcr"}
+
+    def __init__(self, step: float = 0.5, visualize: bool = False):
+        self.step = step  # simulated seconds per cycle
+        self.visualize = visualize
+        self.tc: Thermocycler | None = None
+        self.viewer: str | None = None
+
+    async def setup(self) -> None:
+        tc = Thermocycler("thermocycler", size_x=127.76, size_y=85.48, size_z=100,
+                          backend=ThermocyclerChatterboxBackend(), child_location=Coordinate.zero())
+        await tc.setup()
+        if self.visualize:
+            v = Visualizer(resource=tc, open_browser=False)
+            await v.setup()
+            self.viewer = f"http://{v.host}:{v.fs_port}"
+        self.tc = tc
+
+    async def load(self, plate: str | None) -> None:
+        for p in list(self.tc.children):
+            self.tc.unassign_child_resource(p)
+        if plate:
+            self.tc.assign_child_resource(cor_96_wellplate_360uL_Fb("plate"))
+
+    async def read_result(self, job: Job) -> dict:
+        return amplified(job)
+
+    async def run(self, job: Job, progress: Progress) -> dict:
+        tc = self.tc
+        await asyncio.sleep(self.step)  # plate check
+        progress()
+        if job.protocol not in self.PROTOCOLS:
+            raise ValueError(f"unknown protocol {job.protocol!r}")
+        if not tc.children:
+            raise RuntimeError("no plate on the block")
+        plate = tc.children[0]
+        rows = "ABCDEFGHIJKLMNOP"[:plate.num_items_y]
+        if off := [f"{w.row}{w.column}" for w in job.wells if w.row not in rows or w.column > plate.num_items_x]:
+            raise ValueError(f"wells {', '.join(off)} aren't on a {plate.num_items}-well plate")
+        progress(state=State.running)
+        await tc.close_lid()
+        await asyncio.sleep(self.step)
+        progress(stoppable=False)  # the program starts: the samples are changed from here on
+        # The chatterbox runs the whole program at once; pace it one step per cycle, as a device would report.
+        await tc.run_pcr_profile(
+            denaturation_temp=[PCR["denaturation"][0]], denaturation_time=PCR["denaturation"][1],
+            annealing_temp=[PCR["annealing"][0]], annealing_time=PCR["annealing"][1],
+            extension_temp=[PCR["extension"][0]], extension_time=PCR["extension"][1],
+            num_cycles=PCR["cycles"], block_max_volume=PCR["volume_ul"], lid_temperature=[PCR["lid"]],
+            pre_denaturation_temp=[PCR["initial_denaturation"][0]], pre_denaturation_time=PCR["initial_denaturation"][1],
+            final_extension_temp=[PCR["final_extension"][0]], final_extension_time=PCR["final_extension"][1],
+            storage_temp=[PCR["hold"]], storage_time=0)
+        for _ in range(PCR["cycles"]):
+            await asyncio.sleep(self.step)
+            progress()
+        await tc.wait_for_profile_completion(poll_interval=self.step)
+        await tc.deactivate_lid()
+        await tc.open_lid()
+        progress()
+        return amplified(job)

@@ -21,7 +21,7 @@ Settings (environment variables):
 
 | Variable | Default | What it does |
 |---|---|---|
-| `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated liquid handler. `fake`: a scripted device for tests |
+| `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated machines (a `plate-reading` robot is a plate reader, a `thermocycling` one a thermocycler, any other a liquid handler). `fake`: a scripted device for tests |
 | `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…); or pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1` (`opentrons-1`, `opentrons-2`, `hamilton-1`). A job naming a queue (`labctl --queue`, from Nextflow's `queue` directive) runs only on that queue's robots |
 | `NF_LAB_VISUALIZER` | off | `1`: each PyLabRobot robot serves a live view of its deck (port 1337, then 1338…), linked from its row on the deck page |
 | `NF_LAB_SIMULATED_OPERATOR` | on for `fake`, off for `plr` | `1`: nobody at the bench is needed, because the adapter loads and unloads plates itself. Failed jobs still wait for a person |
@@ -40,7 +40,7 @@ The deck page lists each robot's protocols under its name. For the same list wit
 curl -s localhost:8000/devices | jq '.[] | {device_id, capability, protocols}'
 ```
 
-A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot backend runs one protocol, `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate). The fake backend runs `plate_transfer` too, instantly and with the same result shape, so `examples/plate_transfer` runs without PyLabRobot; its other protocols (`ok`, `preflight_fail`, `protocol_fail`…) are scripted failures for tests.
+A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot liquid handler runs `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate). The plate reader runs `plate_read` (absorbance at 450 nm), and the thermocycler `pcr`: one fixed program (`PCR` in `src/nf_lab_adapter/bindings/__init__.py`), paced one step per cycle, past the stop boundary once cycling starts. The fake backend runs these protocols too, instantly and with the same result shape, so `examples/plate_transfer` runs without PyLabRobot; its other protocols (`ok`, `preflight_fail`, `protocol_fail`…) are scripted failures for tests.
 
 ### Which robots are free, and which are ready?
 
@@ -184,7 +184,7 @@ uv run python -m nf_lab_adapter.app > openapi.json
 uv run pytest conformance --adapter http://127.0.0.1:8000    # its token, if any, in NF_LAB_TOKEN
 ```
 
-Use a simulation adapter for testing, never one a lab is using: the kit submits real jobs for plates it makes up (`CK-…`), which on real robots would move liquid, and leaves them in the ledger. Each `--adapter` run starts with this warning. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter once per backend on free ports, and runs once per binding and protocol in `OWN` (`conformance/conftest.py`): `FakeBackend` with `plate_transfer`, and the PyLabRobot adapter with `plate_transfer` (liquid handler) and `plate_read` (plate reader); plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.
+Use a simulation adapter for testing, never one a lab is using: the kit submits real jobs for plates it makes up (`CK-…`), which on real robots would move liquid, and leaves them in the ledger. Each `--adapter` run starts with this warning. Loading a plate isn't part of the contract, so the adapter must load the queued plates itself (here: `NF_LAB_SIMULATED_OPERATOR=1`). Pick a capability and a protocol that succeeds with `--capability` and `--protocol` (defaults: `liquid-handling`, `plate_transfer`). Without `--adapter`, the kit starts this adapter once per backend on free ports, and runs once per binding and protocol in `OWN` (`conformance/conftest.py`): `FakeBackend` with `plate_transfer`, and the PyLabRobot adapter with `plate_transfer` (liquid handler), `plate_read` (plate reader) and `pcr` (thermocycler); plain `uv run pytest` does this too. A new operation in `openapi.json` fails the kit until it has a check.
 
 ## The lab report
 

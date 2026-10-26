@@ -1,7 +1,10 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.bindings.plr import PlrPlateReaderBackend, PlrLiquidHandlerBackend
+from nf_lab_adapter.bindings import PCR
+from nf_lab_adapter.bindings.plr import PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrThermocyclerBackend
 from test_adapter import req, wait, wells
 
 
@@ -92,3 +95,43 @@ def test_reader_without_a_known_well_fails_preflight(tmp_path):
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), devices)) as c:
         job = c.post("/jobs", json=req("r", "plate_read", capability="plate-reading", wells=wells("A13:S1"))).json()
         assert wait(c, job["job_id"])["state"] == "failed_preflight"
+
+
+def thermocycler(ledger, backend: PlrThermocyclerBackend | None = None) -> TestClient:
+    devices = [Device("thermocycling-1", "thermocycling", backend or PlrThermocyclerBackend(0.0), simulated_operator=True)]
+    return TestClient(create_app(str(ledger), devices))
+
+
+def pcr(key: str, *tokens: str) -> dict:
+    return req(key, "pcr", capability="thermocycling", wells=wells(*(tokens or ("A1:S1", "H12:BLK1:blank"))))
+
+
+def test_pcr_runs_the_program_with_the_lid_open_after(tmp_path):
+    backend = PlrThermocyclerBackend(0.0)
+    with thermocycler(tmp_path / "ledger.sqlite", backend) as c:
+        job = wait(c, c.post("/jobs", json=pcr("k")).json()["job_id"])
+        assert (job["state"], job["stoppable"], job["device_id"]) == ("done", False, "thermocycling-1"), job["reason"]
+        assert job["result"]["program"] == PCR and [w["sample"] for w in job["result"]["wells"]] == ["S1", "BLK1"]
+        assert asyncio.run(backend.tc.get_lid_open())
+        assert asyncio.run(backend.tc.get_total_step_count()) == PCR["cycles"] * 3 + 3  # + initial, final, hold
+
+
+def test_pcr_safe_stop_before_cycling_leaves_the_plate_untouched_and_after_finishes(tmp_path):
+    with thermocycler(tmp_path / "ledger.sqlite", PlrThermocyclerBackend(0.2)) as c:
+        early = c.post("/jobs", json=pcr("early")).json()
+        wait(c, early["job_id"], lambda j: j["state"] == "running" and j["stoppable"])  # closing the lid
+        c.post(f"/jobs/{early['job_id']}/safe_stop")
+        early = wait(c, early["job_id"])
+        assert (early["state"], early["stoppable"]) == ("failed_preflight", True)
+        c.post(f"/jobs/{early['job_id']}/release")
+
+        late = c.post("/jobs", json=pcr("late")).json()
+        wait(c, late["job_id"], lambda j: not j["stoppable"])  # cycling
+        assert c.post(f"/jobs/{late['job_id']}/safe_stop").json()["stop_requested"]
+        assert wait(c, late["job_id"], timeout=15)["state"] == "done"
+
+
+def test_pcr_with_a_well_off_the_plate_fails_preflight(tmp_path):
+    with thermocycler(tmp_path / "ledger.sqlite") as c:
+        job = wait(c, c.post("/jobs", json=pcr("off", "A13:S1")).json()["job_id"])
+        assert (job["state"], job["stoppable"]) == ("failed_preflight", True)

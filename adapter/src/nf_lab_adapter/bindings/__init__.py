@@ -43,6 +43,17 @@ def reading(job: Job) -> dict:
             "wells": [{**w.model_dump(mode="json"), "absorbance": absorbance(w)} for w in job.wells]}
 
 
+# `pcr`'s one program (°C, seconds). shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
+PCR = {"lid": 105.0, "initial_denaturation": [95.0, 180], "cycles": 30, "denaturation": [95.0, 15],
+       "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 300], "hold": 4.0,
+       "volume_ul": 25.0}
+
+
+def amplified(job: Job) -> dict:
+    """`pcr`'s outputs: the program the plate went through, and its plate-map wells."""
+    return {"plate": job.plate, "program": PCR, "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
 class DeviceStopped(Exception):
     """A human stopped the device (e-stop, vendor UI)."""
 
