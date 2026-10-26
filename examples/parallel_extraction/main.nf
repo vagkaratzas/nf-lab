@@ -6,7 +6,7 @@ nextflow.enable.types = true
 // PARALLEL_EXTRACTION subworkflow, on the lab executor). YIELD_QC (local) checks each
 // extraction's yields. LAB_REPORT closes the run with the lab's side: every job of this session.
 
-include { PARALLEL_EXTRACTION } from './subworkflows/local/parallel_extraction'
+include { PARALLEL_EXTRACTION } from '../../wet-modules/subworkflows/parallel_extraction'
 include { YIELD_QC } from './modules/local/yield_qc'
 include { LAB_REPORT } from '../plate_transfer/modules/local/lab_report'
 include { labPlate } from 'plugin/nf-lab'

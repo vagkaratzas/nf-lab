@@ -3,8 +3,8 @@ nextflow.enable.types = true
 // The wet part of the assay: the same plate on two machines, a person carrying it between them.
 // PLATE_READ's job for a plate waits in the adapter's queue until that plate is on a reader.
 
-include { PLATE_TRANSFER } from '../../../../plate_transfer/modules/local/plate_transfer'
-include { PLATE_READ } from '../../../modules/local/plate_read'
+include { PLATE_TRANSFER } from '../../../../../wet-modules/modules/plate_transfer'
+include { PLATE_READ } from '../../../../../wet-modules/modules/plate_read'
 
 workflow WET {
     take:

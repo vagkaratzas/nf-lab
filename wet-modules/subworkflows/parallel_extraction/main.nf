@@ -5,10 +5,10 @@ nextflow.enable.types = true
 // keeps the aliquot's ID; each PCR plate then goes through the thermocycler. A person carries
 // the plates between machines; each job waits in the adapter's queue until its plate is loaded.
 
-include { PLATE_SPLIT } from '../../../modules/local/plate_split'
-include { RNA_EXTRACTION } from '../../../modules/local/rna_extraction'
-include { DNA_EXTRACTION } from '../../../modules/local/dna_extraction'
-include { PCR } from '../../../modules/local/pcr'
+include { PLATE_SPLIT } from '../../modules/plate_split'
+include { RNA_EXTRACTION } from '../../modules/rna_extraction'
+include { DNA_EXTRACTION } from '../../modules/dna_extraction'
+include { PCR } from '../../modules/pcr'
 
 workflow PARALLEL_EXTRACTION {
     take:

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plate_split result",
+  "description": "Two aliquot plates; each holds every plate-map well. The pipeline names them.",
+  "type": "object",
+  "required": [
+    "plate",
+    "aliquots"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "aliquots": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "aliquot",
+          "wells"
+        ],
+        "properties": {
+          "aliquot": {
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "wells": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/well"
+                },
+                {
+                  "required": [
+                    "volume_ul"
+                  ],
+                  "properties": {
+                    "volume_ul": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}

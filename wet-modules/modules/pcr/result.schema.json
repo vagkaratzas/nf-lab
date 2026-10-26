@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcr result",
+  "description": "The program the plate went through, and its plate-map wells.",
+  "type": "object",
+  "required": [
+    "plate",
+    "program",
+    "wells"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "program": {
+      "type": "object",
+      "required": [
+        "lid",
+        "initial_denaturation",
+        "cycles",
+        "denaturation",
+        "annealing",
+        "extension",
+        "final_extension",
+        "hold",
+        "volume_ul"
+      ],
+      "properties": {
+        "lid": {
+          "type": "number"
+        },
+        "cycles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hold": {
+          "type": "number"
+        },
+        "volume_ul": {
+          "type": "number"
+        },
+        "initial_denaturation": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[°C, seconds]"
+        },
+        "denaturation": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[°C, seconds]"
+        },
+        "annealing": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[°C, seconds]"
+        },
+        "extension": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[°C, seconds]"
+        },
+        "final_extension": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[°C, seconds]"
+        }
+      }
+    },
+    "wells": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/well"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}
