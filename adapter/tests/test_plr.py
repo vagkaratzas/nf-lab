@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
@@ -30,7 +32,7 @@ def test_transfer_fills_the_plate_map_wells_from_their_source(tmp_path):
         moved = {f"{w['row']}{w['column']}": (w["sample"], w["volume_ul"]) for w in job["result"]["wells"]}
         assert moved == {"A1": ("S1", 150.0), "C1": ("S2", 150.0), "D2": ("NC1", 150.0),
                          "A12": ("S3", 150.0), "H12": ("BLK1", 150.0)}  # read back from the simulated wells
-        _, src, buf, dst = backend.deck
+        _, src, buf, dst, _, _ = backend.deck
         assert dst.get_item("B1").tracker.get_used_volume() == 0  # a gap stays empty
         assert src.get_item("D2").tracker.get_used_volume() == 300.0  # a control comes from the buffer plate
         assert buf.get_item("D2").tracker.get_used_volume() == 150.0
@@ -135,3 +137,36 @@ def test_pcr_with_a_well_off_the_plate_fails_preflight(tmp_path):
     with thermocycler(tmp_path / "ledger.sqlite") as c:
         job = wait(c, c.post("/jobs", json=pcr("off", "A13:S1")).json()["job_id"])
         assert (job["state"], job["stoppable"]) == ("failed_preflight", True)
+
+
+def test_split_fills_two_aliquots_from_one_aspirate(tmp_path):
+    backend = PlrLiquidHandlerBackend(0.0)
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                               [Device("plr-sim-1", "liquid-handling", backend)])) as c:
+        job = c.post("/jobs", json=req("s", "plate_split", wells=wells("A1:S1", "D2:NC1:negative_control"))).json()
+        c.post("/devices/plr-sim-1/load", json={"plate": "P1"})  # a person loads it, and leaves it there
+        job = wait(c, job["job_id"])
+        assert job["state"] == "done", job["reason"]
+        assert [[(w["sample"], w["volume_ul"]) for w in a["wells"]] for a in job["result"]["aliquots"]] == \
+            [[("S1", 100.0), ("NC1", 100.0)]] * 2
+        _, src, buf, _, _, _ = backend.deck
+        assert src.get_item("A1").tracker.get_used_volume() == buf.get_item("D2").tracker.get_used_volume() == 100.0
+
+
+@pytest.mark.parametrize("protocol, analyte", [("rna_extraction", "RNA"), ("dna_extraction", "DNA")])
+def test_extraction_lyses_every_well_and_moves_the_eluate(tmp_path, protocol, analyte):
+    backend = PlrLiquidHandlerBackend(0.0)
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                               [Device("plr-sim-1", "liquid-handling", backend)])) as c:
+        plate = wells("A1:S1", "B1:S2", "D2:NC1:negative_control", "H12:BLK1:blank")
+        job = c.post("/jobs", json=req("e", protocol, plate="P1-RNA", wells=plate)).json()
+        c.post("/devices/plr-sim-1/load", json={"plate": "P1-RNA"})
+        job = wait(c, job["job_id"])
+        assert (job["state"], job["result"]["analyte"], job["result"]["plate"]) == ("done", analyte, "P1-RNA"), job["reason"]
+        got = {w["sample"]: (w["eluate_ul"], w["yield_ng_ul"]) for w in job["result"]["wells"]}
+        assert got["NC1"] == got["BLK1"] == (100.0, 0.0) and got["S1"][0] == 100.0 and 5 <= got["S1"][1] < 100
+        assert got["S1"][1] != got["S2"][1]  # each sample its own yield
+        _, src, buf, _, _, eluate = backend.deck
+        assert src.get_item("D2").tracker.get_used_volume() == 250.0  # + 50 lysis - 100 lysate: controls are on the aliquot
+        assert buf.get_item("D2").tracker.get_used_volume() == 250.0 and eluate.get_item("B2").tracker.get_used_volume() == 0
+        assert eluate.get_item("D2").tracker.get_used_volume() == 100.0

@@ -3,7 +3,7 @@
 import asyncio
 
 from ..contract import Job, State
-from . import DeviceStopped, Progress, amplified, reading
+from . import EXTRACTIONS, DeviceStopped, Progress, aliquots, amplified, extracted, reading
 
 
 class FakeBackend:
@@ -12,9 +12,9 @@ class FakeBackend:
     `plate_transfer` runs like `ok` and returns PlrLiquidHandlerBackend's result shape
     (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
     `plate_read` returns PlrPlateReaderBackend's and, like a reader, never crosses the stop boundary.
-    `pcr` returns PlrThermocyclerBackend's."""
+    `plate_split`, `rna_extraction`, `dna_extraction` and `pcr` return their PyLabRobot binding's."""
 
-    PROTOCOLS = {"ok", "plate_transfer", "plate_read", "pcr", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    PROTOCOLS = {"ok", "plate_transfer", "plate_split", *EXTRACTIONS, "plate_read", "pcr", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
     viewer = None
 
     def __init__(self, step: float = 0.05):
@@ -29,6 +29,10 @@ class FakeBackend:
     async def read_result(self, job: Job) -> dict:
         if job.protocol == "plate_read":
             return reading(job)
+        if job.protocol == "plate_split":
+            return aliquots(job)
+        if job.protocol in EXTRACTIONS:
+            return extracted(job)
         if job.protocol == "pcr":
             return amplified(job)
         if job.protocol == "plate_transfer":

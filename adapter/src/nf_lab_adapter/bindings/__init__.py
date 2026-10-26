@@ -43,6 +43,36 @@ def reading(job: Job) -> dict:
             "wells": [{**w.model_dump(mode="json"), "absorbance": absorbance(w)} for w in job.wells]}
 
 
+SPLIT_UL = 100.0  # `plate_split`: what each aliquot well gets
+LYSIS_UL = 50.0  # extraction: lysis buffer added to each well
+ELUATE_UL = 100.0  # extraction: lysate moved to the eluate (PCR) plate
+EXTRACTIONS = {"rna_extraction": "RNA", "dna_extraction": "DNA"}  # protocol -> analyte
+
+
+def aliquots(job: Job, volume=lambda aliquot, well: SPLIT_UL) -> dict:
+    """`plate_split`'s outputs: two aliquot plates, each plate-map well in both. The
+    pipeline names them; `volume(aliquot, well)` is what the well holds."""
+    return {"plate": job.plate, "aliquots": [
+        {"aliquot": i, "wells": [{**w.model_dump(mode="json"), "volume_ul": volume(i, w)} for w in job.wells]}
+        for i in (1, 2)]}
+
+
+def concentration(well: Well, analyte: str) -> float:
+    """A simulated yield in ng/µL: none from controls and blanks, each sample its own
+    value per analyte from its ID, so a re-extraction gives the same number."""
+    if well.type != WellType.sample:
+        return 0.0
+    return round(5 + zlib.crc32(f"{well.sample}:{analyte}".encode()) % 9500 / 100, 1)
+
+
+def extracted(job: Job, eluate=lambda well: ELUATE_UL) -> dict:
+    """`rna_extraction`/`dna_extraction`'s outputs: each plate-map well's eluate and its yield."""
+    analyte = EXTRACTIONS[job.protocol]
+    return {"plate": job.plate, "analyte": analyte, "wells": [
+        {**w.model_dump(mode="json"), "eluate_ul": eluate(w), "yield_ng_ul": concentration(w, analyte)}
+        for w in job.wells]}
+
+
 # `pcr`'s one program (°C, seconds). shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
 PCR = {"lid": 105.0, "initial_denaturation": [95.0, 180], "cycles": 30, "denaturation": [95.0, 15],
        "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 300], "hold": 4.0,
