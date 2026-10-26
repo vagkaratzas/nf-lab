@@ -1,7 +1,7 @@
 """Conformance kit: checks a running adapter against the device-job contract (openapi.json).
 
     uv run pytest conformance --adapter http://lab-host:8000    # any adapter
-    uv run pytest conformance                                   # this repo's, FakeBackend and PlrSimBackend
+    uv run pytest conformance                                   # this repo's: each binding and protocol in OWN
 
 The kit calls only the contract's operations and validates every reply against the spec.
 Loading a plate is an operator action, outside the contract, so the adapter under test must
@@ -31,8 +31,8 @@ def pytest_addoption(parser):
     g = parser.getgroup("conformance")
     g.addoption("--adapter", help="URL of the adapter to check; unset: start this repo's fake and plr adapters")
     g.addoption("--spec", default=str(SPEC), help="the contract (default: adapter/openapi.json)")
-    g.addoption("--capability", default="liquid-handling", help="a capability the adapter offers")
-    g.addoption("--protocol", default="plate_transfer", help="a protocol that capability runs and that succeeds")
+    g.addoption("--capability", default="liquid-handling", help="with --adapter: a capability the adapter offers")
+    g.addoption("--protocol", default="plate_transfer", help="with --adapter: a protocol that capability runs and that succeeds")
     g.addoption("--job-timeout", type=float, default=120, help="seconds a job may take to finish")
     g.addoption("--token", default=os.environ.get("NF_LAB_TOKEN"),
                 help="the adapter's bearer token (default: $NF_LAB_TOKEN); unset: the auth check is skipped")
@@ -44,44 +44,78 @@ def pytest_report_header(config):
                 "Run it against a simulation adapter only, never one driving real robots."]
 
 
+# This repo's adapters, checked when no --adapter is given: backend → its robots, and the
+# (backend, capability, protocol) runs of the kit. One adapter per backend serves all its runs.
+OWN_DEVICES = {"fake": "2", "plr": "liquid-handling:2,plate-reading:2,thermocycling:2"}
+OWN = [("fake", "liquid-handling", "plate_transfer"),
+       ("plr", "liquid-handling", "plate_transfer"),
+       ("plr", "plate-reading", "plate_read"),
+       ("plr", "thermocycling", "pcr")]
+
+
 def pytest_generate_tests(metafunc):
     if "adapter" in metafunc.fixturenames:
-        given = metafunc.config.getoption("adapter")
-        metafunc.parametrize("adapter", [given] if given else ["fake", "plr"], indirect=True, scope="module")
+        get = metafunc.config.getoption
+        runs = [(get("adapter"), get("capability"), get("protocol"))] if get("adapter") else OWN
+        metafunc.parametrize("adapter", runs, ids=["-".join(r[::2]) for r in runs], indirect=True, scope="module")
+
+
+@pytest.fixture(scope="session")
+def own_adapters(tmp_path_factory):
+    """Starts this repo's adapter for a backend on first use: (base URL, token)."""
+    started: dict[str, tuple[str, str]] = {}
+    procs = []
+
+    def get(backend: str) -> tuple[str, str]:
+        if backend in started:
+            return started[backend]
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        run_dir = tmp_path_factory.mktemp(backend)
+        token = secrets.token_urlsafe(16)
+        env = {**os.environ, "NF_LAB_TOKEN": token, "NF_LAB_BACKEND": backend, "NF_LAB_DEVICES": OWN_DEVICES[backend],
+               "NF_LAB_STEP": "0.05", "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
+        env.pop("NF_LAB_VISUALIZER", None)
+        log = (run_dir / "adapter.log").open("w")
+        proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory",
+                                 "--host", "127.0.0.1", "--port", str(port)], env=env, stdout=log, stderr=log)
+        procs.append((proc, log))
+        base = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + 60  # PyLabRobot is slow to import
+        while True:
+            try:
+                urllib.request.urlopen(urllib.request.Request(f"{base}/jobs?session=up",
+                                                              headers={"Authorization": f"Bearer {token}"}), timeout=1)
+                break
+            except OSError:
+                assert proc.poll() is None and time.monotonic() < deadline, \
+                    f"{backend} adapter didn't start:\n{(run_dir / 'adapter.log').read_text()}"
+                time.sleep(0.2)
+        started[backend] = base, token
+        return started[backend]
+
+    yield get
+    for proc, log in procs:
+        proc.terminate()
+        proc.wait(timeout=10)
+        log.close()
 
 
 @pytest.fixture(scope="module")
-def adapter(request, tmp_path_factory):
-    """(base URL, token) of the adapter under test: the one given, or one started here per backend."""
-    if request.param.startswith("http"):
-        yield request.param.rstrip("/"), request.config.getoption("token")
-        return
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    run_dir = tmp_path_factory.mktemp(request.param)
-    token = secrets.token_urlsafe(16)
-    env = {**os.environ, "NF_LAB_TOKEN": token, "NF_LAB_BACKEND": request.param, "NF_LAB_DEVICES": "2", "NF_LAB_STEP": "0.05",
-           "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
-    env.pop("NF_LAB_VISUALIZER", None)
-    log = (run_dir / "adapter.log").open("w")
-    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory",
-                             "--host", "127.0.0.1", "--port", str(port)], env=env, stdout=log, stderr=log)
-    base = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 60  # PyLabRobot is slow to import
-    while True:
+def adapter(request, own_adapters):
+    """(base URL, token, capability, protocol) of the adapter under test: the one given, or one of this repo's."""
+    target, capability, protocol = request.param
+    if target.startswith("http"):
+        base = target.rstrip("/")
         try:
-            urllib.request.urlopen(urllib.request.Request(f"{base}/jobs?session=up",
-                                                          headers={"Authorization": f"Bearer {token}"}), timeout=1)
-            break
-        except OSError:
-            assert proc.poll() is None and time.monotonic() < deadline, \
-                f"{request.param} adapter didn't start:\n{(run_dir / 'adapter.log').read_text()}"
-            time.sleep(0.2)
-    yield base, token
-    proc.terminate()
-    proc.wait(timeout=10)
-    log.close()
+            urllib.request.urlopen(f"{base}/jobs?session=up", timeout=5)
+        except urllib.error.HTTPError:
+            pass  # it answered (a 401 without a token is fine)
+        except OSError as e:
+            pytest.exit(f"adapter not reachable at {base}: {getattr(e, 'reason', e)}. Is it started (and ready)?", returncode=1)
+        return base, request.config.getoption("token"), capability, protocol
+    return *own_adapters(target), capability, protocol
 
 
 @dataclass
@@ -130,11 +164,10 @@ class Contract:
 
 @pytest.fixture(scope="module")
 def api(adapter, request) -> Contract:
-    base, token = adapter
+    base, token, _, _ = adapter
     return Contract(base, json.loads(Path(request.config.getoption("spec")).read_text()), token)
 
 
 @pytest.fixture
-def opts(request) -> dict:
-    get = request.config.getoption
-    return {"capability": get("capability"), "protocol": get("protocol"), "job_timeout": get("job_timeout")}
+def opts(adapter, request) -> dict:
+    return {"capability": adapter[2], "protocol": adapter[3], "job_timeout": request.config.getoption("job_timeout")}

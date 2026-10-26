@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plate_read result",
+  "description": "Each plate-map well, with its absorbance.",
+  "type": "object",
+  "required": [
+    "plate",
+    "wavelength_nm",
+    "wells"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "wavelength_nm": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "wells": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/well"
+          },
+          {
+            "required": [
+              "absorbance"
+            ],
+            "properties": {
+              "absorbance": {
+                "type": "number"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}

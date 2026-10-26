@@ -21,3 +21,6 @@ nextflowPlugin {
         url = System.getenv('NPR_API_URL')
     }
 }
+
+// Keep parameter names in spec.json (arg0 otherwise); drop once nextflow-plugin-gradle#27 ships
+tasks.withType(GroovyCompile).configureEach { groovyOptions.parameters = true }

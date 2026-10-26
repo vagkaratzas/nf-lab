@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dna_extraction result",
+  "description": "Each plate-map well's eluate in the PCR plate and its DNA yield.",
+  "type": "object",
+  "required": [
+    "plate",
+    "analyte",
+    "wells"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "analyte": {
+      "const": "DNA"
+    },
+    "wells": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/well"
+          },
+          {
+            "required": [
+              "eluate_ul",
+              "yield_ng_ul"
+            ],
+            "properties": {
+              "eluate_ul": {
+                "type": "number",
+                "minimum": 0
+              },
+              "yield_ng_ul": {
+                "type": "number",
+                "minimum": 0,
+                "description": "ng/µL; 0 for controls and blanks"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "P6 - two samples, a negative control and a blank": {
+        "content": [
+            [
+                "PARALLEL_EXTRACTION:DNA_EXTRACTION (P6-DNA)",
+                "PARALLEL_EXTRACTION:PCR (P6-DNA)",
+                "PARALLEL_EXTRACTION:PCR (P6-RNA)",
+                "PARALLEL_EXTRACTION:PLATE_SPLIT (P6)",
+                "PARALLEL_EXTRACTION:RNA_EXTRACTION (P6-RNA)"
+            ]
+        ],
+        "timestamp": "2026-10-26T14:53:37.873644701",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

@@ -1,0 +1,31 @@
+# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# (GET /devices: each robot's capability and protocols). One module per protocol.
+name: pcr
+description: "Run a PCR plate through a fixed PCR program on a thermocycler"
+keywords: [wet-lab, thermocycling, pcr]
+lab:
+  capability: thermocycling  # the hint the module declares (hints 'lab/capability')
+  protocol: pcr
+  protocol_version: "1.0"
+  stop_boundary: "cycling starts (lid closed, plate untouched before)"
+input:
+  - plate:
+      type: record
+      description: The plate (id) and its plate-map wells (row, column, sample, type)
+output:
+  - id:
+      type: string
+      description: The plate ID
+  - result:
+      type: file
+      pattern: result.json
+      description: "What the protocol did, per plate-map well: program (temperatures, holds, cycles); wells[]"
+  - provenance:
+      type: file
+      pattern: provenance.json
+      description: The device job (device, attempt, state, times), any final state
+  - log:
+      type: file
+      pattern: labctl.log
+      description: Every request to the device adapter and its reply
+authors: ["@vagkaratzas"]

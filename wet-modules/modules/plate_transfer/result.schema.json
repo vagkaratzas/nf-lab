@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plate_transfer result",
+  "description": "Each plate-map well, with the volume the destination well holds.",
+  "type": "object",
+  "required": [
+    "plate",
+    "wells"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "wells": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/well"
+          },
+          {
+            "required": [
+              "volume_ul"
+            ],
+            "properties": {
+              "volume_ul": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}

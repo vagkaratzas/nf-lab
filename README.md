@@ -94,6 +94,43 @@ The graph from that file back through the tasks that made it: the read, then its
 nextflow lineage find type=TaskRun sessionId=$SESSION | wc -l
 ```
 
+## FAQ
+
+### I make robots: what do I add so mine works with nf-lab?
+
+A pipeline never talks to your robot. Its wet tasks submit jobs to a device adapter over HTTP ([the contract](adapter/README.md#the-contract), `adapter/openapi.json`), and the adapter drives the robot through a **binding**. nf-lab ships no device drivers: control stays with your stack (PyLabRobot, SiLA 2, your own API). What you add depends on how your robot is controlled:
+
+| Your robot | You add | nf-lab changes |
+|---|---|---|
+| PyLabRobot already drives it | Nothing: the lab picks PyLabRobot's driver and deck for it, and the existing PyLabRobot bindings run their protocols on it | None. Today the bindings in `adapter/src/nf_lab_adapter/bindings/plr.py` run PyLabRobot's simulator on a fixed deck; choosing the driver and deck in lab config is planned |
+| A SiLA 2 server or a vendor API | A binding: a class implementing `Backend` (`adapter/src/nf_lab_adapter/bindings/__init__.py`) | Today, wiring it into `adapter/src/nf_lab_adapter/app.py` (where `NF_LAB_BACKEND` and the capability pick a binding). Planned: bindings as your own Python package, found through an entry point, with no nf-lab change |
+| Your own scheduler that already keeps jobs | Your own adapter that implements `adapter/openapi.json` | None |
+
+**A binding** implements:
+
+- `PROTOCOLS`: the protocols it runs.
+- `viewer`: a URL with a live view of the deck, or `None`.
+- `setup()`: called once, when the adapter starts.
+- `run(job, progress)`: runs the protocol, reports through `progress` its state and whether it's still safe to stop, and returns the protocol's result.
+- `load(plate)`: a plate was put on the deck (`None`: the deck was emptied).
+- `read_result(job)`: reads the result off the deck, when a person marks a failed or stopped job as done.
+
+The adapter keeps the rest (the ledger, locks, the pool, queues, the operator's page), so a binding never deals with retries, `-resume` or two pipelines wanting the same robot.
+
+**Prove it** with the conformance kit, against an adapter that uses your binding or against your own adapter. Use a simulator, never a robot a lab is using: the kit submits real jobs.
+
+```bash
+cd adapter && uv run pytest conformance --adapter http://127.0.0.1:8100 --capability <yours> --protocol <one that succeeds>
+```
+
+The kit checks the HTTP contract and its guarantees ([Conformance kit](adapter/README.md#conformance-kit)). Planned: a smaller kit for a lone binding, and a check that its result matches the protocol's result schema.
+
+**Protocols and pipelines.** A robot that runs protocols that already exist needs no new Nextflow code: the wet modules (in [`wet-modules/`](wet-modules/README.md)) don't know which robot runs them. A new protocol is a new wet module, one per protocol, named after it: it calls `labctl run --protocol <name> --protocol-version <x.y>` and declares `hints 'lab/capability': '<capability>'`. A new kind of machine (e.g. a thermocycler) is a new capability name, used by both the module and your binding.
+
+**What the lab sets, not you:** which robots it has, their capability and queue (`NF_LAB_DEVICES=capability[/queue]:count`, see [Start it](adapter/README.md#start-it)), and its deck and labware layout.
+
+**Not checked yet:** protocol versions. A binding lists protocol names only, so a job for version 2.0 of a protocol can land on a binding written for 1.0. Planned: bindings declare the versions they run, and the adapter refuses others at submit.
+
 ## Building
 
 To build the plugin:

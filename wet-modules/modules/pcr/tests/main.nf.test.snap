@@ -1,0 +1,66 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P5",
+                "program": {
+                    "lid": 105.0,
+                    "initial_denaturation": [
+                        95.0,
+                        180
+                    ],
+                    "cycles": 30,
+                    "denaturation": [
+                        95.0,
+                        15
+                    ],
+                    "annealing": [
+                        60.0,
+                        30
+                    ],
+                    "extension": [
+                        72.0,
+                        30
+                    ],
+                    "final_extension": [
+                        72.0,
+                        300
+                    ],
+                    "hold": 4.0,
+                    "volume_ul": 25.0
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-26T14:42:30.370909523",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

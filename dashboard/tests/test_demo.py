@@ -183,3 +183,42 @@ def test_manual_plate_assay_moves_the_plate_from_the_liquid_handler_to_the_reade
         "SELECT protocol, device_id, state FROM jobs ORDER BY submitted_at").fetchall()
     assert [(p, d.split("-")[0], s) for p, d, s in rows] == [("plate_transfer", "liquid", "done"),
                                                              ("plate_read", "plate", "done")]
+
+
+EXTRACTION_STUB = """#!/usr/bin/env bash
+run() {{ "{labctl}" run --wait --poll 0.1 --outdir "$1" --capability "$2" --protocol "$3" --protocol-version 1.0 \\
+    --plate "$4" --wells A1:S1 > /dev/null 2>&1; }}
+run split liquid-handling plate_split P1 || exit 1
+run rna liquid-handling rna_extraction P1-RNA & r=$!
+run dna liquid-handling dna_extraction P1-DNA & d=$!
+wait $r && wait $d && run pcr-rna thermocycling pcr P1-RNA && run pcr-dna thermocycling pcr P1-DNA
+"""
+
+
+def test_side_by_side_extracts_both_aliquots_at_once_then_runs_pcr(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    stub = tmp_path / "nextflow"
+    stub.write_text(EXTRACTION_STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
+    stub.chmod(0o755)
+    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.3, nextflow=[str(stub)], beat=0, tick=0.1,
+                         runs=tmp_path / "runs"))
+
+    async def go():
+        demo.start("side_by_side", "parallel_extraction")
+        try:
+            await asyncio.wait_for(asyncio.shield(demo.task), 60)
+        finally:
+            await demo.shutdown()
+    asyncio.run(go())
+    assert demo.status == "finished", demo.log
+    db = sqlite3.connect(demo.run_dir / "ledger.sqlite")
+    rows = db.execute("SELECT protocol, plate, device_id, state FROM jobs ORDER BY submitted_at, protocol").fetchall()
+    assert sorted((p, pl, s) for p, pl, _, s in rows) == [
+        ("dna_extraction", "P1-DNA", "done"), ("pcr", "P1-DNA", "done"), ("pcr", "P1-RNA", "done"),
+        ("plate_split", "P1", "done"), ("rna_extraction", "P1-RNA", "done")]
+    extractions = db.execute("SELECT device_id, started_at, finished_at FROM jobs WHERE protocol LIKE '%_extraction'").fetchall()
+    (d1, s1, f1), (d2, s2, f2) = extractions
+    assert d1 != d2 and s1 < f2 and s2 < f1  # two robots, at the same time
+    assert {d for p, _, d, _ in rows if p == "pcr"} == {"thermocycling-1"}

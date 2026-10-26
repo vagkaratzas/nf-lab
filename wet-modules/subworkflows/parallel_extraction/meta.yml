@@ -1,0 +1,25 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: parallel_extraction
+description: "Split a plate into RNA and DNA aliquots, extract both side by side, then PCR each eluate plate"
+keywords: [wet-lab, extraction, rna, dna, pcr]
+components:
+  - plate_split
+  - rna_extraction
+  - dna_extraction
+  - pcr
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - split:
+      type: record
+      description: "The split's outputs for each plate (id, result, provenance, log)"
+  - extracted:
+      type: record
+      description: "Each aliquot's extraction (id <plate>-RNA or <plate>-DNA; result, provenance, log)"
+  - amplified:
+      type: record
+      description: "Each aliquot's PCR (id <plate>-RNA or <plate>-DNA; result, provenance, log)"
+authors: ["@vagkaratzas"]

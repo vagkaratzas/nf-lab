@@ -21,11 +21,10 @@ Two more calls come from a person (or the simulated operator), never from a job:
   person resolves a failed job as done after checking the deck.
 """
 
-import asyncio
 import zlib
 from typing import Protocol
 
-from .contract import Job, State, Well, WellType
+from ..contract import Job, State, Well, WellType
 
 ABSORBANCE_NM = 450
 
@@ -44,6 +43,47 @@ def reading(job: Job) -> dict:
             "wells": [{**w.model_dump(mode="json"), "absorbance": absorbance(w)} for w in job.wells]}
 
 
+SPLIT_UL = 100.0  # `plate_split`: what each aliquot well gets
+LYSIS_UL = 50.0  # extraction: lysis buffer added to each well
+ELUATE_UL = 100.0  # extraction: lysate moved to the eluate (PCR) plate
+EXTRACTIONS = {"rna_extraction": "RNA", "dna_extraction": "DNA"}  # protocol -> analyte
+
+
+def aliquots(job: Job, volume=lambda aliquot, well: SPLIT_UL) -> dict:
+    """`plate_split`'s outputs: two aliquot plates, each plate-map well in both. The
+    pipeline names them; `volume(aliquot, well)` is what the well holds."""
+    return {"plate": job.plate, "aliquots": [
+        {"aliquot": i, "wells": [{**w.model_dump(mode="json"), "volume_ul": volume(i, w)} for w in job.wells]}
+        for i in (1, 2)]}
+
+
+def concentration(well: Well, analyte: str) -> float:
+    """A simulated yield in ng/µL: none from controls and blanks, each sample its own
+    value per analyte from its ID, so a re-extraction gives the same number."""
+    if well.type != WellType.sample:
+        return 0.0
+    return round(5 + zlib.crc32(f"{well.sample}:{analyte}".encode()) % 9500 / 100, 1)
+
+
+def extracted(job: Job, eluate=lambda well: ELUATE_UL) -> dict:
+    """`rna_extraction`/`dna_extraction`'s outputs: each plate-map well's eluate and its yield."""
+    analyte = EXTRACTIONS[job.protocol]
+    return {"plate": job.plate, "analyte": analyte, "wells": [
+        {**w.model_dump(mode="json"), "eluate_ul": eluate(w), "yield_ng_ul": concentration(w, analyte)}
+        for w in job.wells]}
+
+
+# `pcr`'s one program (°C, seconds). shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
+PCR = {"lid": 105.0, "initial_denaturation": [95.0, 180], "cycles": 30, "denaturation": [95.0, 15],
+       "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 300], "hold": 4.0,
+       "volume_ul": 25.0}
+
+
+def amplified(job: Job) -> dict:
+    """`pcr`'s outputs: the program the plate went through, and its plate-map wells."""
+    return {"plate": job.plate, "program": PCR, "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
 class DeviceStopped(Exception):
     """A human stopped the device (e-stop, vendor UI)."""
 
@@ -60,52 +100,3 @@ class Backend(Protocol):
     async def run(self, job: Job, progress: Progress) -> dict: ...
     async def load(self, plate: str | None) -> None: ...
     async def read_result(self, job: Job) -> dict: ...
-
-
-class FakeBackend:
-    """Scripted device for tests. The protocol name picks the script.
-
-    `plate_transfer` runs like `ok` and returns PlrSimBackend's result shape
-    (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
-    `plate_read` returns PlrReaderBackend's and, like a reader, never crosses the stop boundary."""
-
-    PROTOCOLS = {"ok", "plate_transfer", "plate_read", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
-    viewer = None
-
-    def __init__(self, step: float = 0.05):
-        self.step = step  # seconds per simulated step
-
-    async def setup(self) -> None:
-        pass
-
-    async def load(self, plate: str | None) -> None:
-        pass
-
-    async def read_result(self, job: Job) -> dict:
-        if job.protocol == "plate_read":
-            return reading(job)
-        if job.protocol == "plate_transfer":
-            return {"plate": job.plate, "wells": [{**w.model_dump(mode="json"), "volume_ul": 150.0} for w in job.wells]}
-        return {"wells": len(job.wells)}
-
-    async def run(self, job: Job, progress: Progress) -> dict:
-        script = job.protocol
-        await asyncio.sleep(self.step)  # deck check
-        progress()
-        if script not in self.PROTOCOLS:
-            raise ValueError(f"unknown protocol {script!r}")
-        if script == "preflight_fail" or (script == "preflight_once" and job.attempt == 1):
-            raise RuntimeError("deck check failed: tip rack missing")
-        progress(state=State.running)
-        await asyncio.sleep(self.step)
-        if script != "plate_read":
-            progress(stoppable=False)  # first aspirate: material is now touched
-        if script == "silent":
-            await asyncio.Event().wait()  # device stops reporting, forever
-        if script == "estop":
-            raise DeviceStopped("e-stop pressed at the deck")
-        await asyncio.sleep(self.step)
-        progress()
-        if script == "protocol_fail":
-            raise RuntimeError("tip pickup failed mid-transfer")
-        return await self.read_result(job)

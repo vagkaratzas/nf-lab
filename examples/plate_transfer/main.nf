@@ -5,7 +5,7 @@ nextflow.enable.types = true
 // result is flattened back to one record per well; the sample wells go on.
 // LAB_REPORT closes the run with the lab's side: every job of this session, failures too.
 
-include { PLATE_TRANSFER } from './modules/local/plate_transfer'
+include { PLATE_TRANSFER } from '../../wet-modules/modules/plate_transfer'
 include { PLATE_REPORT } from './modules/local/plate_report'
 include { LAB_REPORT } from './modules/local/lab_report'
 include { labPlate } from 'plugin/nf-lab'
