@@ -1,0 +1,22 @@
+# examples/parallel_extraction runs end to end on the fake backend: four plates, each split into
+# an RNA and a DNA aliquot on one of two liquid handlers; the two extractions run side by side on
+# both; every eluate goes through PCR on the thermocycler; yields reach QC and samples.csv.
+NF_LAB_DEVICES=liquid-handling:2,thermocycling:1 start_adapter
+"$NXF_CMD" -q run "$VALIDATION/../examples/parallel_extraction" -ansi-log false -output-dir results
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'plate_split'") == 4 ]]
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol IN ('rna_extraction', 'dna_extraction')") == 8 ]]
+[[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'pcr' AND device_id = 'thermocycling-1'") == 8 ]]
+# side by side: extractions overlap in time on the two liquid handlers
+[[ $(sql "SELECT count(*) FROM jobs a JOIN jobs b ON a.job_id < b.job_id
+          WHERE a.protocol LIKE '%_extraction' AND b.protocol LIKE '%_extraction' AND a.device_id != b.device_id
+            AND a.started_at < b.finished_at AND b.started_at < a.finished_at") -gt 0 ]]
+# an aliquot is extracted only after its split, and its PCR runs only after its extraction left the liquid handler
+[[ $(sql "SELECT count(*) FROM jobs s JOIN jobs e ON e.plate IN (s.plate || '-RNA', s.plate || '-DNA')
+          WHERE s.protocol = 'plate_split' AND e.protocol LIKE '%_extraction' AND e.started_at < s.finished_at") == 0 ]]
+[[ $(sql "SELECT count(*) FROM jobs e JOIN jobs p ON e.plate = p.plate
+          WHERE e.protocol LIKE '%_extraction' AND p.protocol = 'pcr' AND p.started_at < e.released_at") == 0 ]]
+[[ $(tail -n +2 results/samples.csv | wc -l) == 52 ]]  # 26 sample wells, RNA and DNA each
+[[ $(cat results/qc/*.yield_qc.tsv | wc -l) == 66 ]]   # every filled well of 8 aliquots, controls and blanks too
+# controls and blanks yield nothing, so none is called contaminated
+[[ $(awk -F'\t' '$2 != "sample" && $8 != "pass"' results/qc/*.yield_qc.tsv | wc -l) == 0 ]]
+[[ $(jq '.jobs | length' results/lab_report/lab_report.json) == 20 ]]
