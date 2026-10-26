@@ -59,6 +59,8 @@ def auth() -> dict:
 EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
     "plate_transfer": ("Plate transfer", "2", ["pool", "estop", "manual"]),
     "plate_assay": ("Plate assay: transfer, then read", "liquid-handling:2,plate-reading:1", ["manual"]),
+    "parallel_extraction": ("Parallel extraction: RNA and DNA side by side, then PCR", "liquid-handling:2,thermocycling:1",
+                            ["side_by_side", "manual"]),  # one plate (the example's default map)
 }
 
 
@@ -322,6 +324,21 @@ async def estop(demo: Demo) -> None:
                    "attempt 1 voided after the e-stop, attempt 2 done.")
 
 
+async def side_by_side(demo: Demo) -> None:
+    await demo.say("Side by side: one sample plate, two simulated liquid handlers and a thermocycler. Starting fresh: "
+                   "a new ledger and empty decks.")
+    await demo.fresh_adapter()
+    await demo.say("nextflow run examples/parallel_extraction: plate P1 is split into an RNA and a DNA aliquot, "
+                   "both are extracted at once on the two liquid handlers, then each eluate goes through PCR.")
+    await demo.start_pipeline()
+    await demo.say("The split first. Once it's done, the RNA and DNA extractions queue together: with both robots "
+                   "free they run at the same time, one aliquot each. Then both eluates queue for the thermocycler.")
+    await demo.serve_until(demo.pipeline_ended)
+    await demo.serve_until(lambda ds: all(d["status"] != "unload" for d in ds))  # take the last plates off
+    await demo.say(f"Run finished (exit {demo.pipeline.returncode}). results/samples.csv gives each sample's RNA and DNA "
+                   "yield with the robot that extracted it and the thermocycler that ran its PCR; results/qc flags low yields.")
+
+
 async def manual(demo: Demo) -> None:
     await demo.say(f"Manual: a fresh ledger, empty decks. Starting examples/{demo.example}.")
     await demo.fresh_adapter()
@@ -345,5 +362,7 @@ async def rerun(demo: Demo) -> None:
 SCENARIOS: dict[str, tuple[str, str, Callable[[Demo], Awaitable[None]]]] = {
     "pool": ("Pool", "Four plates over two robots; the operator loads and unloads plates", pool),
     "estop": ("E-stop", "A person e-stops one robot mid-plate; Failed, Unload, then -resume reruns only that plate", estop),
+    "side_by_side": ("Side by side", "One plate: its RNA and DNA aliquots extracted at once on two robots, then PCR; "
+                                     "the operator moves the plates", side_by_side),
     "manual": ("Manual", "A fresh ledger, empty decks and the pipeline running: you are the operator", manual),
 }

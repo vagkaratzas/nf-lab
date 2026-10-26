@@ -119,7 +119,7 @@ def test_pcr_runs_the_program_with_the_lid_open_after(tmp_path):
 
 
 def test_pcr_safe_stop_before_cycling_leaves_the_plate_untouched_and_after_finishes(tmp_path):
-    with thermocycler(tmp_path / "ledger.sqlite", PlrThermocyclerBackend(0.2)) as c:
+    with thermocycler(tmp_path / "ledger.sqlite", PlrThermocyclerBackend(0.5)) as c:
         early = c.post("/jobs", json=pcr("early")).json()
         wait(c, early["job_id"], lambda j: j["state"] == "running" and j["stoppable"])  # closing the lid
         c.post(f"/jobs/{early['job_id']}/safe_stop")

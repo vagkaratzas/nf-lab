@@ -1,8 +1,10 @@
-# examples/parallel_extraction runs end to end on the fake backend: four plates, each split into
+# examples/parallel_extraction runs end to end on the fake backend, on the four-plate map (its own
+# default is one plate, for demos): each plate split into
 # an RNA and a DNA aliquot on one of two liquid handlers; the two extractions run side by side on
 # both; every eluate goes through PCR on the thermocycler; yields reach QC and samples.csv.
 NF_LAB_DEVICES=liquid-handling:2,thermocycling:1 start_adapter
-"$NXF_CMD" -q run "$VALIDATION/../examples/parallel_extraction" -ansi-log false -output-dir results
+"$NXF_CMD" -q run "$VALIDATION/../examples/parallel_extraction" -ansi-log false -output-dir results \
+    --plate_map "$VALIDATION/../examples/plate_transfer/plate_map.csv"
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'plate_split'") == 4 ]]
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol IN ('rna_extraction', 'dna_extraction')") == 8 ]]
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done' AND protocol = 'pcr' AND device_id = 'thermocycling-1'") == 8 ]]

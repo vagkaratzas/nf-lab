@@ -229,7 +229,7 @@ class PlrThermocyclerBackend:
     PROTOCOLS = {"pcr"}
 
     def __init__(self, step: float = 0.5, visualize: bool = False):
-        self.step = step  # simulated seconds per cycle
+        self.step = step  # simulated seconds per operation; a cycle takes a fifth of one
         self.visualize = visualize
         self.tc: Thermocycler | None = None
         self.viewer: str | None = None
@@ -269,7 +269,7 @@ class PlrThermocyclerBackend:
         await tc.close_lid()
         await asyncio.sleep(self.step)
         progress(stoppable=False)  # the program starts: the samples are changed from here on
-        # The chatterbox runs the whole program at once; pace it one step per cycle, as a device would report.
+        # The chatterbox runs the whole program at once; pace it, reporting each cycle as a device would.
         await tc.run_pcr_profile(
             denaturation_temp=[PCR["denaturation"][0]], denaturation_time=PCR["denaturation"][1],
             annealing_temp=[PCR["annealing"][0]], annealing_time=PCR["annealing"][1],
@@ -279,7 +279,7 @@ class PlrThermocyclerBackend:
             final_extension_temp=[PCR["final_extension"][0]], final_extension_time=PCR["final_extension"][1],
             storage_temp=[PCR["hold"]], storage_time=0)
         for _ in range(PCR["cycles"]):
-            await asyncio.sleep(self.step)
+            await asyncio.sleep(self.step / 5)  # 30 cycles: 6 steps, so a demo isn't all PCR
             progress()
         await tc.wait_for_profile_completion(poll_interval=self.step)
         await tc.deactivate_lid()
