@@ -1,0 +1,45 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P2",
+                "wavelength_nm": 450,
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "absorbance": 0.734
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "absorbance": 0.5
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control",
+                        "absorbance": 0.05
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "absorbance": 0.04
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-26T14:42:39.983808562",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

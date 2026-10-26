@@ -1,0 +1,24 @@
+nextflow_pipeline {
+
+    name "Test Workflow PARALLEL_EXTRACTION"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "parallel_extraction"
+    tag "plate_split"
+    tag "rna_extraction"
+    tag "dna_extraction"
+    tag "pcr"
+
+    test("P6 - two samples, a negative control and a blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // the split, both extractions, then a PCR for each eluate plate
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

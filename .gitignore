@@ -14,3 +14,4 @@ results
 *.requests.jsonl
 .serena/
 .lineage
+.nf-test*
