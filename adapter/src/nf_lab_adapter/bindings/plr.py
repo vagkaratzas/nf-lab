@@ -229,6 +229,7 @@ class PlrThermocyclerBackend:
     PROTOCOLS = {"pcr"}
     PROGRAM = PCR
     result = staticmethod(amplified)
+    CYCLE = 0.2  # simulated steps per cycle: 30 cycles in 6 steps, so a demo isn't all PCR
 
     def __init__(self, step: float = 0.5, visualize: bool = False):
         self.step = step  # simulated seconds per operation; a cycle takes a fifth of one
@@ -285,7 +286,7 @@ class PlrThermocyclerBackend:
             final_extension_temp=[PCR["final_extension"][0]], final_extension_time=PCR["final_extension"][1],
             storage_temp=[PCR["hold"]], storage_time=0)
         for _ in range(PCR["cycles"]):
-            await asyncio.sleep(self.step / 5)  # 30 cycles: 6 steps, so a demo isn't all PCR
+            await asyncio.sleep(self.step * self.CYCLE)
             progress()
         await tc.wait_for_profile_completion(poll_interval=self.step)
         await tc.deactivate_lid()
@@ -303,3 +304,6 @@ class PlrQpcrBackend(PlrThermocyclerBackend):
     PROTOCOLS = {"qpcr"}
     PROGRAM = QPCR
     result = staticmethod(quantified)
+    # A read every cycle: a plate takes longer than its extraction (~1.5 h against ~1 h in a lab),
+    # so plates pile up at the qPCR pool, as they would.
+    CYCLE = 3.0
