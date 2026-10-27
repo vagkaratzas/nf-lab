@@ -13,10 +13,12 @@ The panels only read: they open the ledger read-only. The demo bar is the one pa
 
 ## Demos
 
-The bar at the top runs scripted demos of the example you pick (`EXAMPLES` in `demo.py`): `plate_transfer` (two liquid handlers) `plate_assay` (two liquid handlers and a plate reader; Manual only, its Pool and E-stop aren't scripted) or `parallel_extraction` (two liquid handlers and a thermocycler; Side by side: one plate split into RNA and DNA aliquots, extracted at once on the two robots, then PCR; and Manual). Each demo starts fresh: it starts its own adapter (a new ledger, the example's simulated PyLabRobot machines, empty decks), runs the example, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
+The bar at the top runs scripted demos of the example you pick (`EXAMPLES` in `demo.py`): `plate_transfer` (two liquid handlers) `plate_assay` (two liquid handlers and a plate reader; Manual only, its Pool and E-stop aren't scripted) or `parallel_extraction` (two liquid handlers and a thermocycler; Side by side: one plate split into RNA and DNA aliquots, extracted at once on the two robots, then PCR; and Manual) or `qpcr` (four liquid handlers and six qPCR instruments; Scale and Manual). Each demo starts fresh: it starts its own adapter (a new ledger, the example's simulated PyLabRobot machines, empty decks), runs the example, and plays the person at the deck, loading and unloading plates and pressing E-stop or Failed through the adapter's operator API. A bubble narrates each step, and the robot a person step acts on flashes in panel 4.
 
 - **Pool**: four plates over two robots; the operator loads plates as robots free up. About 2.5 minutes.
 - **E-stop**: the operator e-stops one robot mid-plate. The other robot finishes (`errorStrategy 'finish'`), the run ends failed; the operator presses Failed and unloads; a `-resume` rerun runs only that plate again, as attempt 2. About 4 minutes.
+
+- **Scale**: 1000 samples on 11 plates: RNA extraction spread over the four liquid handlers, then RT-qPCR over the six qPCR instruments. The adapter's simulated operator moves the plates (44 narrated person steps would hide the robots), the narrator reports how many robots run and how many jobs wait, and robot steps run at a third of `NF_LAB_DEMO_STEP`. About 3.5 minutes.
 
 - **Manual**: the same fresh start and the pipeline running, then nothing scripted: you are the operator on the deck controls.
 

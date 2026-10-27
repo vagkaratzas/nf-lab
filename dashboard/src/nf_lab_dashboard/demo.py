@@ -61,6 +61,7 @@ EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
     "plate_assay": ("Plate assay: transfer, then read", "liquid-handling:2,plate-reading:1", ["manual"]),
     "parallel_extraction": ("Parallel extraction: RNA and DNA side by side, then PCR", "liquid-handling:2,thermocycling:1",
                             ["side_by_side", "manual"]),  # one plate (the example's default map)
+    "qpcr": ("qPCR screen: 1000 samples, extraction then RT-qPCR", "liquid-handling:4,qpcr:6", ["scale", "manual"]),
 }
 
 
@@ -179,8 +180,10 @@ class Demo:
             return
         await self.fresh_adapter(wipe=False)
 
-    async def fresh_adapter(self, wipe: bool = True) -> None:
-        """Stop the adapter this panel started, wipe the scenario's folder (new ledger), start a new adapter on it."""
+    async def fresh_adapter(self, wipe: bool = True, simulated_operator: bool = False, step: float | None = None) -> None:
+        """Stop the adapter this panel started, wipe the scenario's folder (new ledger), start a new adapter on it.
+        `simulated_operator`: the adapter loads and unloads plates itself, with no narrated person steps.
+        `step`: seconds per robot step, in place of the settings' (a long scenario runs faster)."""
         await self._end(self.adapter, timeout=10)
         with socket.socket() as sock:
             if sock.connect_ex(("127.0.0.1", self.s.port)) == 0:
@@ -193,8 +196,8 @@ class Demo:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         # `nextflow lineage` reads only the launch dir's config, never the pipeline's: let it open this run's store
         (self.run_dir / "nextflow.config").write_text("lineage.enabled = true\n")
-        env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": EXAMPLES[self.example][1], "NF_LAB_STEP": str(self.s.step),
-               "NF_LAB_SIMULATED_OPERATOR": "0", "NF_LAB_VISUALIZER": "1" if self.s.backend == "plr" else "0",
+        env = {**os.environ, "NF_LAB_BACKEND": self.s.backend, "NF_LAB_DEVICES": EXAMPLES[self.example][1], "NF_LAB_STEP": str(step or self.s.step),
+               "NF_LAB_SIMULATED_OPERATOR": "1" if simulated_operator else "0", "NF_LAB_VISUALIZER": "1" if self.s.backend == "plr" else "0",
                "NF_LAB_LEDGER": str(self.run_dir / "ledger.sqlite")}
         self.adapter = await asyncio.create_subprocess_exec(
             str(python), "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory", "--port", str(self.s.port),
@@ -339,6 +342,30 @@ async def side_by_side(demo: Demo) -> None:
                    "yield with the robot that extracted it and the thermocycler that ran its PCR; results/qc flags low yields.")
 
 
+async def scale(demo: Demo) -> None:
+    await demo.say("Scale: an RT-qPCR screen of 1000 samples on 11 plates, over 4 liquid handlers and 6 qPCR "
+                   "instruments. Starting fresh: a new ledger and empty decks.")
+    await demo.fresh_adapter(simulated_operator=True, step=demo.s.step / 3)  # 11 plates in about 3 minutes
+    await demo.say("At this scale nobody narrates every plate move: the adapter's simulated operator (a plate mover, "
+                   "or a busy technician) loads and unloads plates as robots free up.")
+    await demo.say("nextflow run examples/qpcr: each plate's RNA extraction asks for 'liquid-handling', its qPCR for "
+                   "'qpcr'. The same pipeline runs one plate or a hundred; only the lab's robots set the pace.")
+    await demo.start_pipeline()
+    while demo.pipeline.returncode is None:
+        devices, queue = await demo.api("GET", "/devices"), await demo.api("GET", "/queue")
+        busy = {c: sum(d["status"] == "running" for d in devices if d["capability"] == c) for c in ("liquid-handling", "qpcr")}
+        if busy["liquid-handling"] or busy["qpcr"] or queue:
+            await demo.say(f"{busy['liquid-handling']} of 4 liquid handlers and {busy['qpcr']} of 6 qPCR instruments "
+                           f"running; {len(queue)} jobs waiting for a robot.")
+        await asyncio.sleep(max(demo.s.beat * 2, demo.s.tick))
+    samples = demo.run_dir / "results" / "samples.csv"
+    calls = samples.read_text().splitlines()[1:] if samples.exists() else []
+    detected = sum(",detected," in c for c in calls)
+    await demo.say(f"Run finished (exit {demo.pipeline.returncode}). results/samples.csv: {len(calls)} samples, "
+                   f"{detected} detected, each with its Ct, its plate's control check and the two robots that "
+                   "handled it. The lab report lists every job.")
+
+
 async def manual(demo: Demo) -> None:
     await demo.say(f"Manual: a fresh ledger, empty decks. Starting examples/{demo.example}.")
     await demo.fresh_adapter()
@@ -364,5 +391,7 @@ SCENARIOS: dict[str, tuple[str, str, Callable[[Demo], Awaitable[None]]]] = {
     "estop": ("E-stop", "A person e-stops one robot mid-plate; Failed, Unload, then -resume reruns only that plate", estop),
     "side_by_side": ("Side by side", "One plate: its RNA and DNA aliquots extracted at once on two robots, then PCR; "
                                      "the operator moves the plates", side_by_side),
+    "scale": ("Scale", "1000 samples on 11 plates over 10 robots; the adapter's simulated operator moves the plates",
+              scale),
     "manual": ("Manual", "A fresh ledger, empty decks and the pipeline running: you are the operator", manual),
 }
