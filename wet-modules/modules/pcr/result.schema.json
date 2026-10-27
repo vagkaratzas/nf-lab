@@ -147,6 +147,7 @@
           "enum": [
             "sample",
             "negative_control",
+            "positive_control",
             "blank"
           ]
         }

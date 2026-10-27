@@ -27,6 +27,7 @@ FINAL = {State.done, State.failed_preflight, State.failed_in_protocol, State.sto
 class WellType(StrEnum):
     sample = "sample"
     negative_control = "negative_control"
+    positive_control = "positive_control"
     blank = "blank"
 
 

@@ -26,6 +26,7 @@ One module per protocol, named after it.
 | `dna_extraction` | liquid-handling | `dna_extraction` | first aspirate |
 | `plate_read` | plate-reading | `plate_read` | none (moves no liquid) |
 | `pcr` | thermocycling | `pcr` | start of cycling |
+| `qpcr` | qpcr | `qpcr` | start of cycling |
 
 | Subworkflow | What it does |
 |---|---|
