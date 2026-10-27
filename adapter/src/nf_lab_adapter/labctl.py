@@ -26,6 +26,9 @@ They come from the ledger: a key that is already done writes its stored outputs
 and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
+Defaults for --adapter, --poll and --grace come from NF_LAB_ADAPTER, NF_LAB_POLL and
+NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope.
+
 NF_LAB_TOKEN, if set, goes with every request as a bearer token (an adapter that
 sets a token refuses requests without it: exit 1, not retried). In a pipeline it comes
 from a Nextflow secret, so it never lands in the work dir.
@@ -234,6 +237,10 @@ def report(args: argparse.Namespace) -> int:
     return 0
 
 
+def env_float(name: str, default: float) -> float:
+    return float(os.environ.get(name) or default)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="labctl", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -249,16 +256,18 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate and wells)")
     r.add_argument("--wait", action="store_true", help="poll until the job ends; exit with its code")
     r.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
-    r.add_argument("--poll", type=float, default=2.0, help="seconds between status polls")
-    r.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
+    r.add_argument("--poll", type=float, default=env_float("NF_LAB_POLL", 2.0), help="seconds between status polls")
+    r.add_argument("--grace", type=float, default=env_float("NF_LAB_GRACE", 300.0),
+                   help="seconds to absorb an unreachable adapter")
     r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
     r.add_argument("--session", help="the Nextflow session (${workflow.sessionId}); the ledger keeps it per job")
     r.set_defaults(func=run)
     rp = sub.add_parser("report", help="every job a Nextflow session submitted or collected, failures too")
     rp.add_argument("--session", required=True, help="the Nextflow session (${workflow.sessionId})")
     rp.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
-    rp.add_argument("--poll", type=float, default=2.0, help="seconds between retries")
-    rp.add_argument("--grace", type=float, default=300.0, help="seconds to absorb an unreachable adapter")
+    rp.add_argument("--poll", type=float, default=env_float("NF_LAB_POLL", 2.0), help="seconds between retries")
+    rp.add_argument("--grace", type=float, default=env_float("NF_LAB_GRACE", 300.0),
+                    help="seconds to absorb an unreachable adapter")
     rp.add_argument("--outdir", default=".", help="where lab_report.json and lab_report.tsv go")
     rp.set_defaults(func=report)
     args = p.parse_args(argv)

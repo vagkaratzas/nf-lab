@@ -506,7 +506,8 @@ def main() -> FastAPI:
     NF_LAB_DEVICES: how many liquid handlers (default 1), named fake-1… or plr-sim-1…; or
     pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1`.
     NF_LAB_BACKEND=fake (scripted, default) or plr (PyLabRobot simulation: `plate-reading`
-    devices are plate readers, `thermocycling` thermocyclers, the others liquid handlers);
+    devices are plate readers, `thermocycling` thermocyclers, `qpcr` real-time PCR instruments, the others
+    liquid handlers);
     with plr, NF_LAB_VISUALIZER=1 serves PyLabRobot's browser view of the deck.
     NF_LAB_SIMULATED_OPERATOR=1 or 0: default 1 for fake (tests, CI), 0 for plr,
     so a person loads and unloads plates on the deck page.
@@ -516,9 +517,10 @@ def main() -> FastAPI:
     plr = os.environ.get("NF_LAB_BACKEND", "fake") == "plr"
     if plr:
         from .bindings.plr import (  # imported only when used: PyLabRobot is heavy
-            PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrThermocyclerBackend)
+            PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend)
         prefix = "plr-sim"
-        machines = {"plate-reading": PlrPlateReaderBackend, "thermocycling": PlrThermocyclerBackend}
+        machines = {"plate-reading": PlrPlateReaderBackend, "thermocycling": PlrThermocyclerBackend,
+                    "qpcr": PlrQpcrBackend}
         def backend(capability: str) -> Backend:
             binding = machines.get(capability, PlrLiquidHandlerBackend)
             return binding(step=step, visualize=os.environ.get("NF_LAB_VISUALIZER") == "1")

@@ -3,7 +3,7 @@
 import asyncio
 
 from ..contract import Job, State
-from . import EXTRACTIONS, DeviceStopped, Progress, aliquots, amplified, extracted, reading
+from . import EXTRACTIONS, DeviceStopped, Progress, aliquots, amplified, extracted, quantified, reading
 
 
 class FakeBackend:
@@ -12,9 +12,9 @@ class FakeBackend:
     `plate_transfer` runs like `ok` and returns PlrLiquidHandlerBackend's result shape
     (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
     `plate_read` returns PlrPlateReaderBackend's and, like a reader, never crosses the stop boundary.
-    `plate_split`, `rna_extraction`, `dna_extraction` and `pcr` return their PyLabRobot binding's."""
+    `plate_split`, `rna_extraction`, `dna_extraction`, `pcr` and `qpcr` return their PyLabRobot binding's."""
 
-    PROTOCOLS = {"ok", "plate_transfer", "plate_split", *EXTRACTIONS, "plate_read", "pcr", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
+    PROTOCOLS = {"ok", "plate_transfer", "plate_split", *EXTRACTIONS, "plate_read", "pcr", "qpcr", "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
     viewer = None
 
     def __init__(self, step: float = 0.05):
@@ -35,6 +35,8 @@ class FakeBackend:
             return extracted(job)
         if job.protocol == "pcr":
             return amplified(job)
+        if job.protocol == "qpcr":
+            return quantified(job)
         if job.protocol == "plate_transfer":
             return {"plate": job.plate, "wells": [{**w.model_dump(mode="json"), "volume_ul": 150.0} for w in job.wells]}
         return {"wells": len(job.wells)}

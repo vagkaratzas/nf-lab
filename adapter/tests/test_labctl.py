@@ -1,4 +1,5 @@
 import json
+import os
 import signal
 import socket
 import subprocess
@@ -39,13 +40,13 @@ def serve(tmp_path, step: float = 0.05, token: str | None = None):
         stop()
 
 
-def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float = 2, wait=True,
+def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float | None = 2, wait=True,
            out: Path | None = None, wells=("A1:S1", "B1:S2"), poll: float = 0.05, session: str | None = None,
            **popen):
     cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--capability", "liquid-handling",
            "--protocol", protocol, "--protocol-version", "1.0", "--plate", "P1", "--wells", *wells,
-           "--adapter", url, "--poll", str(poll), "--grace", str(grace),
-           "--outdir", str(out or tempfile.mkdtemp())]
+           "--adapter", url, "--poll", str(poll), "--outdir", str(out or tempfile.mkdtemp())]
+    cmd += ["--grace", str(grace)] if grace is not None else []
     cmd += ["--key", key] if key else []
     cmd += ["--wait"] if wait else []
     cmd += ["--session", session] if session else []
@@ -155,6 +156,15 @@ def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
         assert finish(labctl(url, "silent", key="k"))[0] == 1  # the retry gets the truth
 
 
+def test_grace_defaults_to_the_environment(tmp_path):
+    # the lab executor sets NF_LAB_GRACE from `lab.grace`; without it labctl would wait 300 s here
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        dead = f"http://127.0.0.1:{s.getsockname()[1]}"
+    p = labctl(dead, grace=None, out=tmp_path, env={**os.environ, "NF_LAB_GRACE": "0.3"})
+    assert p.wait(timeout=30) == 69
+
+
 def test_task_hash_is_read_from_a_nextflow_work_dir():
     assert task_hash(Path("/runs/work/ab") / ("c" * 30)) == "ab" + "c" * 30
     assert task_hash(Path("/tmp/somewhere")) is None
@@ -177,7 +187,6 @@ def test_report_lists_a_sessions_attempts_with_their_lineage_ids(tmp_path):
 
 
 def test_labctl_sends_the_token_from_the_environment(tmp_path):
-    import os
     with serve(tmp_path, token="t0ken") as (url, _):
         env = {k: v for k, v in os.environ.items() if k != "NF_LAB_TOKEN"}
         out = tmp_path / "none"

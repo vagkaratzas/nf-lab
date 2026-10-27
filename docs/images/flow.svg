@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img"
+     aria-label="Nextflow for the wet lab: one pipeline mixes wet and dry steps. Wet tasks go through a new lab executor plugin and a thin new device adapter, which holds the device pool, lock and job ledger, to existing drivers and unchanged instruments; dry tasks go to HPC or cloud as usual. People load, unload and resolve at the adapter, not in the pipeline."
+     font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Nextflow for the wet lab</title>
+  <desc>A plate map feeds a wet dispense step; a typed plate record flows from it to a dry analysis step inside one Nextflow pipeline. The wet task goes to the new lab executor plugin, which submits, polls and safe-stops jobs on a thin new device adapter. The adapter runs each job on a free device from its pool, holds the device lock and the job ledger (at-most-once), reports the phase reached, and wraps existing drivers (SiLA 2, PyLabRobot or a vendor API) that control unchanged instruments. The dry task goes to an existing HPC or cloud executor. A person at the bench loads and unloads plates, confirms the deck and resolves failed jobs through the adapter's deck page (its operator API), outside the pipeline.</desc>
+  <defs>
+    <marker id="a-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+    <marker id="a-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0F766E"/></marker>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D4ED8"/></marker>
+    <marker id="a-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C2410C"/></marker>
+    <marker id="a-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B45309"/></marker>
+  </defs>
+
+  <rect width="1200" height="740" fill="#FFFFFF"/>
+
+  <!-- headline -->
+  <text x="60" y="52" font-size="28" font-weight="700" fill="#0F172A">Nextflow for the wet lab</text>
+  <text x="60" y="80" font-size="15" fill="#64748B">Robotic steps join the pipeline as ordinary tasks. No DSL changes, no device drivers.</text>
+
+  <!-- Nextflow head process: the pipeline -->
+  <rect x="40" y="104" width="1120" height="136" rx="14" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="60" y="128" font-size="12" font-weight="700" letter-spacing="1" fill="#64748B">NEXTFLOW HEAD PROCESS · STRICT-SYNTAX PIPELINE</text>
+  <text x="1140" y="128" font-size="12" fill="#64748B" text-anchor="end">controller host</text>
+
+  <rect x="60" y="150" width="180" height="66" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="150" y="178" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">PLATE MAP</text>
+  <text x="150" y="198" font-size="12" fill="#475569" text-anchor="middle">samples · wells</text>
+
+  <line x1="240" y1="183" x2="309" y2="183" stroke="#475569" stroke-width="2" marker-end="url(#a-gray)"/>
+  <text x="275" y="175" font-size="11" fill="#475569" text-anchor="middle">records</text>
+
+  <rect x="310" y="150" width="220" height="66" rx="10" fill="#CCFBF1" stroke="#0F766E" stroke-width="1.5"/>
+  <text x="420" y="178" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">DISPENSE</text>
+  <text x="420" y="198" font-size="12" fill="#475569" text-anchor="middle">wet · liquid handling</text>
+
+  <line x1="530" y1="183" x2="689" y2="183" stroke="#0F766E" stroke-width="2.5" marker-end="url(#a-teal)"/>
+  <text x="610" y="173" font-size="12" font-weight="700" fill="#0F766E" text-anchor="middle">typed plate record</text>
+  <text x="610" y="201" font-size="11" fill="#64748B" text-anchor="middle">id · wells · volumes</text>
+
+  <rect x="690" y="150" width="200" height="66" rx="10" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.5"/>
+  <text x="790" y="178" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">ANALYZE</text>
+  <text x="790" y="198" font-size="12" fill="#475569" text-anchor="middle">dry · compute</text>
+
+  <line x1="890" y1="183" x2="959" y2="183" stroke="#475569" stroke-width="2" marker-end="url(#a-gray)"/>
+  <text x="925" y="175" font-size="11" fill="#475569" text-anchor="middle">data</text>
+
+  <rect x="960" y="150" width="180" height="66" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="1050" y="178" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">REPORT</text>
+  <text x="1050" y="198" font-size="12" fill="#475569" text-anchor="middle">results + provenance</text>
+
+
+  <!-- wet path: lab executor plugin (the new component) -->
+  <line x1="420" y1="216" x2="420" y2="289" stroke="#0F766E" stroke-width="2.5" marker-end="url(#a-teal)"/>
+  <text x="430" y="262" font-size="12" fill="#0F766E">wet task + plate record</text>
+
+  <rect x="310" y="290" width="330" height="180" rx="12" fill="#FFEDD5" stroke="#C2410C" stroke-width="2.5"/>
+  <text x="330" y="320" font-size="17" font-weight="700" fill="#0F172A">Lab executor plugin</text>
+  <rect x="566" y="304" width="58" height="22" rx="11" fill="#C2410C"/>
+  <text x="595" y="319" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">NEW</text>
+  <g font-size="13" fill="#0F172A">
+    <text x="330" y="352"><tspan fill="#C2410C" font-weight="700">✓</tspan>  Physical work runs at most once</text>
+    <text x="330" y="376"><tspan fill="#C2410C" font-weight="700">✓</tspan>  Reattaches after restart, by job key</text>
+    <text x="330" y="400"><tspan fill="#C2410C" font-weight="700">✓</tspan>  Retries only before liquid moves</text>
+    <text x="330" y="424"><tspan fill="#C2410C" font-weight="700">✓</tspan>  Safe-stop on abort, never hard-kill</text>
+    <text x="330" y="448"><tspan fill="#C2410C" font-weight="700">✓</tspan>  Provenance file, recorded by lineage</text>
+  </g>
+
+  <!-- plugin <-> device service -->
+  <line x1="400" y1="470" x2="400" y2="539" stroke="#C2410C" stroke-width="2" marker-end="url(#a-orange)"/>
+  <text x="390" y="510" font-size="12" fill="#C2410C" text-anchor="end">submit · poll · safe-stop</text>
+  <line x1="480" y1="540" x2="480" y2="471" stroke="#475569" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a-gray)"/>
+  <text x="490" y="510" font-size="12" fill="#475569">status + phase reached</text>
+
+  <rect x="310" y="540" width="330" height="84" rx="10" fill="#FFEDD5" stroke="#C2410C" stroke-width="1.5"/>
+  <text x="330" y="568" font-size="15" font-weight="700" fill="#0F172A">Device adapter</text>
+  <rect x="566" y="553" width="58" height="22" rx="11" fill="#C2410C"/>
+  <text x="595" y="568" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">NEW</text>
+  <text x="330" y="591" font-size="12" fill="#0F172A">device pool · lock · job ledger · deck page</text>
+  <text x="330" y="610" font-size="12" fill="#475569">wraps SiLA 2 · PyLabRobot · vendor API</text>
+
+  <line x1="475" y1="624" x2="475" y2="655" stroke="#475569" stroke-width="2" marker-end="url(#a-gray)"/>
+  <text x="485" y="644" font-size="11" fill="#475569">existing drivers</text>
+
+  <rect x="310" y="656" width="330" height="60" rx="10" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text x="330" y="681" font-size="14" font-weight="700" fill="#0F172A">Instruments</text>
+  <text x="330" y="701" font-size="12" fill="#475569">liquid handler · plate reader · unchanged</text>
+
+  <!-- the person at the bench: operator API on the adapter, outside the pipeline -->
+  <rect x="60" y="540" width="160" height="84" rx="10" fill="#FEF3C7" stroke="#B45309" stroke-width="1.5"/>
+  <text x="140" y="574" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">Operator</text>
+  <text x="140" y="594" font-size="12" fill="#475569" text-anchor="middle">at the bench</text>
+  <line x1="220" y1="582" x2="309" y2="582" stroke="#B45309" stroke-width="2" marker-end="url(#a-amber)"/>
+  <text x="265" y="572" font-size="11" fill="#B45309" text-anchor="middle">load · unload</text>
+  <text x="265" y="600" font-size="11" fill="#B45309" text-anchor="middle">resolve</text>
+
+  <!-- dry path: existing executor -->
+  <line x1="790" y1="216" x2="790" y2="299" stroke="#1D4ED8" stroke-width="2" marker-end="url(#a-blue)"/>
+  <text x="800" y="262" font-size="12" fill="#1D4ED8">dry task</text>
+  <rect x="690" y="300" width="200" height="70" rx="10" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.5"/>
+  <text x="790" y="330" font-size="14" font-weight="700" fill="#0F172A" text-anchor="middle">HPC / cloud executor</text>
+  <text x="790" y="350" font-size="12" fill="#475569" text-anchor="middle">existing · same run</text>
+
+  <!-- punchline + legend -->
+  <text x="720" y="460" font-size="20" font-weight="700" fill="#0F172A">Nextflow schedules and records.</text>
+  <text x="720" y="488" font-size="20" font-weight="700" fill="#0F766E">Lab software drives the robot.</text>
+
+  <g font-size="13" fill="#334155">
+    <rect x="720" y="538" width="16" height="16" rx="4" fill="#CCFBF1" stroke="#0F766E"/>
+    <text x="746" y="551">Wet step: touches material</text>
+    <rect x="720" y="566" width="16" height="16" rx="4" fill="#DBEAFE" stroke="#1D4ED8"/>
+    <text x="746" y="579">Dry step: compute</text>
+    <rect x="720" y="594" width="16" height="16" rx="4" fill="#FEF3C7" stroke="#B45309"/>
+    <text x="746" y="607">Human step</text>
+    <rect x="720" y="622" width="16" height="16" rx="4" fill="#FFEDD5" stroke="#C2410C" stroke-width="2"/>
+    <text x="746" y="635">New: what this project builds</text>
+    <rect x="720" y="650" width="16" height="16" rx="4" fill="#F1F5F9" stroke="#475569"/>
+    <text x="746" y="663">Existing software or hardware</text>
+  </g>
+</svg>

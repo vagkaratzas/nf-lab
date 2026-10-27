@@ -1,0 +1,22 @@
+nextflow_pipeline {
+
+    name "Test Workflow RT_QPCR"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "rt_qpcr"
+    tag "rna_extraction"
+    tag "qpcr"
+
+    test("P8 - two samples, a no-template control, a positive control and an extraction blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // the extraction, then the qPCR of its eluate plate
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

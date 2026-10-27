@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.bindings import PCR
-from nf_lab_adapter.bindings.plr import PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrThermocyclerBackend
+from nf_lab_adapter.bindings import PCR, POSITIVE_CT, QPCR
+from nf_lab_adapter.bindings.plr import PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend
 from test_adapter import req, wait, wells
 
 
@@ -137,6 +137,20 @@ def test_pcr_with_a_well_off_the_plate_fails_preflight(tmp_path):
     with thermocycler(tmp_path / "ledger.sqlite") as c:
         job = wait(c, c.post("/jobs", json=pcr("off", "A13:S1")).json()["job_id"])
         assert (job["state"], job["stoppable"]) == ("failed_preflight", True)
+
+
+def test_qpcr_reverse_transcribes_cycles_and_calls_a_ct_per_well(tmp_path):
+    backend = PlrQpcrBackend(0.0)
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                               [Device("qpcr-1", "qpcr", backend, simulated_operator=True)])) as c:
+        plate = wells(*(f"A{i}:S{i}" for i in range(1, 9)), "H11:NTC1:negative_control", "H12:POS1:positive_control")
+        job = wait(c, c.post("/jobs", json=req("q", "qpcr", capability="qpcr", wells=plate)).json()["job_id"])
+        assert (job["state"], job["stoppable"]) == ("done", False), job["reason"]
+        assert job["result"]["program"] == QPCR
+        ct = {w["sample"]: w["ct"] for w in job["result"]["wells"]}
+        assert ct["NTC1"] is None and ct["POS1"] == POSITIVE_CT
+        assert all(c is None or 16 <= c < 34 for c in ct.values())
+        assert asyncio.run(backend.tc.get_total_step_count()) == QPCR["cycles"] * 3 + 3
 
 
 def test_split_fills_two_aliquots_from_one_aspirate(tmp_path):

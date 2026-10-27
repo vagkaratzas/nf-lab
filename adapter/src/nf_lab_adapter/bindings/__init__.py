@@ -33,7 +33,7 @@ def absorbance(well: Well) -> float:
     """A simulated reading: controls and blanks near background, each sample its own value
     from its ID, so a re-read gives the same number."""
     if well.type != WellType.sample:
-        return {WellType.negative_control: 0.05, WellType.blank: 0.04}[well.type]
+        return {WellType.negative_control: 0.05, WellType.blank: 0.04, WellType.positive_control: 1.8}[well.type]
     return round(0.2 + zlib.crc32(well.sample.encode()) % 1300 / 1000, 3)
 
 
@@ -60,6 +60,8 @@ def aliquots(job: Job, volume=lambda aliquot, well: SPLIT_UL) -> dict:
 def concentration(well: Well, analyte: str) -> float:
     """A simulated yield in ng/µL: none from controls and blanks, each sample its own
     value per analyte from its ID, so a re-extraction gives the same number."""
+    if well.type == WellType.positive_control:
+        return 50.0  # a known template
     if well.type != WellType.sample:
         return 0.0
     return round(5 + zlib.crc32(f"{well.sample}:{analyte}".encode()) % 9500 / 100, 1)
@@ -82,6 +84,31 @@ PCR = {"lid": 105.0, "initial_denaturation": [95.0, 180], "cycles": 30, "denatur
 def amplified(job: Job) -> dict:
     """`pcr`'s outputs: the program the plate went through, and its plate-map wells."""
     return {"plate": job.plate, "program": PCR, "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
+# `qpcr`'s one program: one-step RT-qPCR (reverse transcription, then PCR), fluorescence read
+# each cycle at extension. shortcut: fixed until jobs carry protocol parameters (open question 12).
+QPCR = {"lid": 105.0, "reverse_transcription": [50.0, 600], "initial_denaturation": [95.0, 120], "cycles": 40,
+        "denaturation": [95.0, 15], "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 60],
+        "hold": 4.0, "volume_ul": 20.0, "channel": "FAM"}
+POSITIVE_CT = 25.0
+
+
+def ct(well: Well) -> float | None:
+    """A simulated threshold cycle: none (undetermined) for no-template controls and blanks;
+    the positive control at `POSITIVE_CT`; each sample its own value from its ID, about one in
+    seven not detected, so a re-run gives the same call."""
+    if well.type == WellType.positive_control:
+        return POSITIVE_CT
+    h = zlib.crc32(f"{well.sample}:ct".encode())
+    if well.type != WellType.sample or h % 7 == 0:
+        return None
+    return round(16 + h % 1800 / 100, 2)
+
+
+def quantified(job: Job) -> dict:
+    """`qpcr`'s outputs: the program, and each plate-map well's Ct (null: undetermined)."""
+    return {"plate": job.plate, "program": QPCR, "wells": [{**w.model_dump(mode="json"), "ct": ct(w)} for w in job.wells]}
 
 
 class DeviceStopped(Exception):

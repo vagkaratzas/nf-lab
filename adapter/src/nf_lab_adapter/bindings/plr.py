@@ -25,8 +25,8 @@ from pylabrobot.thermocycling import Thermocycler, ThermocyclerChatterboxBackend
 from pylabrobot.visualizer import Visualizer
 
 from . import (
-    ABSORBANCE_NM, ELUATE_UL, EXTRACTIONS, LYSIS_UL, PCR, SPLIT_UL, Progress, absorbance, aliquots, amplified,
-    extracted, reading,
+    ABSORBANCE_NM, ELUATE_UL, EXTRACTIONS, LYSIS_UL, PCR, QPCR, SPLIT_UL, Progress, absorbance, aliquots, amplified,
+    extracted, quantified, reading,
 )
 from ..contract import Job, State, WellType
 
@@ -227,6 +227,9 @@ class PlrThermocyclerBackend:
     a safe stop before that leaves the plate as it was loaded."""
 
     PROTOCOLS = {"pcr"}
+    PROGRAM = PCR
+    result = staticmethod(amplified)
+    CYCLE = 0.2  # simulated steps per cycle: 30 cycles in 6 steps, so a demo isn't all PCR
 
     def __init__(self, step: float = 0.5, visualize: bool = False):
         self.step = step  # simulated seconds per operation; a cycle takes a fifth of one
@@ -251,10 +254,10 @@ class PlrThermocyclerBackend:
             self.tc.assign_child_resource(azenta_96_wellplate_200uL_Vb_4titudeframestar("plate"))
 
     async def read_result(self, job: Job) -> dict:
-        return amplified(job)
+        return self.result(job)
 
     async def run(self, job: Job, progress: Progress) -> dict:
-        tc = self.tc
+        tc, PCR = self.tc, self.PROGRAM
         await asyncio.sleep(self.step)  # plate check
         progress()
         if job.protocol not in self.PROTOCOLS:
@@ -269,6 +272,10 @@ class PlrThermocyclerBackend:
         await tc.close_lid()
         await asyncio.sleep(self.step)
         progress(stoppable=False)  # the program starts: the samples are changed from here on
+        if rt := PCR.get("reverse_transcription"):  # RT-qPCR: RNA to cDNA on the block first
+            await tc.set_block_temperature([rt[0]])
+            await asyncio.sleep(self.step)
+            progress()
         # The chatterbox runs the whole program at once; pace it, reporting each cycle as a device would.
         await tc.run_pcr_profile(
             denaturation_temp=[PCR["denaturation"][0]], denaturation_time=PCR["denaturation"][1],
@@ -279,10 +286,24 @@ class PlrThermocyclerBackend:
             final_extension_temp=[PCR["final_extension"][0]], final_extension_time=PCR["final_extension"][1],
             storage_temp=[PCR["hold"]], storage_time=0)
         for _ in range(PCR["cycles"]):
-            await asyncio.sleep(self.step / 5)  # 30 cycles: 6 steps, so a demo isn't all PCR
+            await asyncio.sleep(self.step * self.CYCLE)
             progress()
         await tc.wait_for_profile_completion(poll_interval=self.step)
         await tc.deactivate_lid()
         await tc.open_lid()
         progress()
-        return amplified(job)
+        return self.result(job)
+
+
+class PlrQpcrBackend(PlrThermocyclerBackend):
+    """`qpcr`: a real-time PCR instrument, a thermocycler that reads fluorescence every cycle.
+    One-step RT-qPCR (`QPCR`): reverse transcription, then the cycles; each plate-map well's
+    threshold cycle (Ct) in the result. PyLabRobot 0.2.2 simulates no qPCR instrument, so this
+    runs the program on its simulated thermocycler and simulates the reads (`ct`)."""
+
+    PROTOCOLS = {"qpcr"}
+    PROGRAM = QPCR
+    result = staticmethod(quantified)
+    # A read every cycle: a plate takes longer than its extraction (~1.5 h against ~1 h in a lab),
+    # so plates pile up at the qPCR pool, as they would.
+    CYCLE = 3.0

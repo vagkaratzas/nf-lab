@@ -1,6 +1,55 @@
-# nf-lab plugin
+# nf-lab
 
-The device adapter (and its deck page and `labctl`) has its own guide: [adapter/README.md](adapter/README.md).
+Robotic wet-lab steps in Nextflow pipelines, through a plugin. One pipeline mixes wet steps (a robot transfers a plate, extracts RNA, runs a PCR) and dry ones (analysis), with no change to the Nextflow language. A wet step never runs twice: not on retry, `-resume` or a new launch directory. Aborting a run safe-stops a robot instead of killing it mid-protocol. Each wet task's provenance (device, protocol version, samples) goes into Nextflow lineage.
+
+Prototype, built against PyLabRobot's simulated machines; no real robot needed.
+
+![A pipeline's wet tasks go through the lab executor and labctl to a device adapter, which holds the robot pool, the lock and the job ledger, and drives the robots through bindings; dry tasks run as usual](docs/images/flow.svg)
+
+## Quickstart
+
+Prerequisites: Java 17, [uv](https://docs.astral.sh/uv/), Nextflow 26.10.0 or later on `PATH`.
+
+```bash
+make install                                                               # builds the plugin into ~/.nextflow/plugins
+cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080
+```
+
+Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side**: one plate is split into RNA and DNA aliquots, extracted at once on two simulated liquid handlers, then PCR on a thermocycler, while a narrator plays the person at the bench. `plate_transfer` → **E-stop** shows the abort, the safe-stop and a `-resume` that runs only the stopped plate again. The demos need port 8000 free ([dashboard/README.md](dashboard/README.md#demos)).
+
+## What's in the repo
+
+| Path | What | Guide |
+|---|---|---|
+| `src/` | The Nextflow plugin (Groovy): the `lab` executor, the `lab {}` config scope, the `labPlate` function | this README |
+| `adapter/` | The device adapter (Python, FastAPI, SQLite): the job ledger, robot pool, queues, the deck page for people, the bindings that drive PyLabRobot's simulated machines; `labctl`, the client a wet task runs; `openapi.json`, the contract; the conformance kit | [adapter/README.md](adapter/README.md) |
+| `wet-modules/` | Nextflow modules, one per protocol, nf-core style, and a subworkflow | [wet-modules/README.md](wet-modules/README.md) |
+| `examples/` | Pipelines: `plate_transfer`, `plate_assay` (transfer, then read), `parallel_extraction` (extraction, then PCR), `qpcr` (1000 samples: extraction, then RT-qPCR); `hello` | their `main.nf` and `nextflow.config` |
+| `dashboard/` | Live view of a run (Nextflow, adapter calls, ledger, robots) and scripted demos | [dashboard/README.md](dashboard/README.md) |
+| `validation/` | End-to-end checks of the guarantees, in CI | [Tests](#tests) |
+
+## In a pipeline
+
+A wet step is an ordinary process: label `process_wet`, a capability hint, and a script that runs `labctl run --protocol <name>` (see any module in `wet-modules/modules/`). The pipeline's config sends those processes to the `lab` executor and says how to reach the adapter:
+
+```groovy
+plugins { id 'nf-lab@0.1.0' }
+
+lab {
+    adapter = 'http://127.0.0.1:8000'   // unset: $NF_LAB_ADAPTER
+    poll = 2.s
+    grace = 5.m
+}
+
+process {
+    withLabel: 'process_wet' {
+        executor = 'lab'
+        errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }   // 75: nothing moved; 69: adapter unreachable
+    }
+}
+```
+
+The full version, with the token as a Nextflow secret and the lab report, is [examples/plate_transfer/nextflow.config](examples/plate_transfer/nextflow.config). The robots, ledger and simulation are the adapter's settings, not the pipeline's ([Start it](adapter/README.md#start-it)).
 
 ## Questions lineage answers
 
@@ -120,7 +169,7 @@ The adapter keeps the rest (the ledger, locks, the pool, queues, the operator's 
 **Prove it** with the conformance kit, against an adapter that uses your binding or against your own adapter. Use a simulator, never a robot a lab is using: the kit submits real jobs.
 
 ```bash
-cd adapter && uv run pytest conformance --adapter http://127.0.0.1:8100 --capability <yours> --protocol <one that succeeds>
+cd adapter && uv run pytest conformance --adapter http://127.0.0.1:8000 --capability <yours> --protocol <one that succeeds>
 ```
 
 The kit checks the HTTP contract and its guarantees ([Conformance kit](adapter/README.md#conformance-kit)). Planned: a smaller kit for a lone binding, and a check that its result matches the protocol's result schema.
@@ -138,13 +187,6 @@ To build the plugin:
 make assemble
 ```
 
-## Testing with Nextflow
-
-The plugin can be tested without a local Nextflow installation:
-
-1. Build and install the plugin to your local Nextflow installation: `make install`
-2. Run a pipeline with the plugin: `nextflow run hello -plugins nf-lab@0.1.0`
-
 ## Tests
 
 Prerequisites: Java 17, [uv](https://docs.astral.sh/uv/), `nextflow` on `PATH`.
@@ -160,18 +202,4 @@ The end-to-end checks run the `validation/` pipeline against a simulated device 
 
 ## Publishing
 
-Plugins can be published to a central plugin registry to make them accessible to the Nextflow community. 
-
-
-Follow these steps to publish the plugin to the Nextflow Plugin Registry:
-
-1. Create a file named `$HOME/.gradle/gradle.properties`, where $HOME is your home directory. Add the following properties:
-
-    * `npr.apiKey`: Your Nextflow Plugin Registry access token.
-
-2. Use the following command to package and create a release for your plugin on GitHub: `make release`.
-
-
-> [!NOTE]
-> The Nextflow Plugin registry is currently available as preview technology. Contact info@nextflow.io to learn how to get access to it.
-> 
+Not published to the Nextflow plugin registry yet. `make install` puts the plugin in `~/.nextflow/plugins/nf-lab-0.1.0`, and `id 'nf-lab@0.1.0'` loads it from there. To publish: set `npr.apiKey` (your registry token) in `$HOME/.gradle/gradle.properties`, then `make release`.

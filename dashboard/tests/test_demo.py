@@ -222,3 +222,37 @@ def test_side_by_side_extracts_both_aliquots_at_once_then_runs_pcr(tmp_path):
     (d1, s1, f1), (d2, s2, f2) = extractions
     assert d1 != d2 and s1 < f2 and s2 < f1  # two robots, at the same time
     assert {d for p, _, d, _ in rows if p == "pcr"} == {"thermocycling-1"}
+
+
+QPCR_STUB = """#!/usr/bin/env bash
+run() {{ "{labctl}" run --wait --poll 0.1 --outdir "$1$2" --capability "$3" --protocol "$1" --protocol-version 1.0 \\
+    --plate "$2" --wells A1:S1 H12:POS1:positive_control > /dev/null 2>&1; }}
+pids=()
+for p in Q01 Q02 Q03 Q04 Q05 Q06; do (run rna_extraction $p liquid-handling && run qpcr $p qpcr) & pids+=($!); done
+rc=0; for pid in "${{pids[@]}}"; do wait "$pid" || rc=1; done; exit $rc
+"""
+
+
+def test_scale_runs_the_plates_over_both_pools_with_the_simulated_operator(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    stub = tmp_path / "nextflow"
+    stub.write_text(QPCR_STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
+    stub.chmod(0o755)
+    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.1, nextflow=[str(stub)], beat=0, tick=0.1,
+                         runs=tmp_path / "runs"))
+
+    async def go():
+        demo.start("scale", "qpcr")
+        try:
+            await asyncio.wait_for(asyncio.shield(demo.task), 60)
+        finally:
+            await demo.shutdown()
+    asyncio.run(go())
+    assert demo.status == "finished", demo.log
+    rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT protocol, device_id, state FROM jobs").fetchall()
+    assert len(rows) == 12 and {s for *_, s in rows} == {"done"}
+    assert len({d for p, d, _ in rows if p == "rna_extraction"}) == 4  # six plates queued at once: every liquid handler
+    assert {d.split("-")[0] for p, d, _ in rows if p == "qpcr"} == {"qpcr"}
+    assert not [e for e in demo.log if e["kind"] == "person"]  # the adapter moved the plates

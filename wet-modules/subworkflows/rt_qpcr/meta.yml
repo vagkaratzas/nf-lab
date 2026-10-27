@@ -1,0 +1,20 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: rt_qpcr
+description: "Extract each plate's RNA, then run its eluate plate through one-step RT-qPCR: a Ct per well"
+keywords: [wet-lab, extraction, rna, qpcr, rt-qpcr]
+components:
+  - rna_extraction
+  - qpcr
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - extracted:
+      type: record
+      description: "Each plate's extraction (id, result, provenance, log)"
+  - quantified:
+      type: record
+      description: "Each plate's qPCR (id, result with a ct per well, provenance, log)"
+authors: ["@vagkaratzas"]

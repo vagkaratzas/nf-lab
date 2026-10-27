@@ -1,0 +1,15 @@
+{
+    "P8 - two samples, a no-template control, a positive control and an extraction blank": {
+        "content": [
+            [
+                "RT_QPCR:QPCR (P8)",
+                "RT_QPCR:RNA_EXTRACTION (P8)"
+            ]
+        ],
+        "timestamp": "2026-10-27T12:53:06.667948226",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    }
+}
