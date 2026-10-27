@@ -69,6 +69,8 @@ jobs:
 
       - name: Checks
         run: validation/run.sh
+        env:
+          CHECK_JOBS: 2  # all at once starves the timing checks on a small runner
 
       - name: Check logs
         if: failure()
