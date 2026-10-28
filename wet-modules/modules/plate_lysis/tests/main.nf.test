@@ -1,0 +1,70 @@
+nextflow_process {
+
+    name "Test Process PLATE_LYSIS"
+    script "../main.nf"
+    process "PLATE_LYSIS"
+
+    tag "modules"
+    tag "modules_wet"
+    tag "plate_lysis"
+
+    test("two samples, a negative control and a blank") {
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P11', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            def out = process.out[0][0]
+            assertAll(
+                { assert process.success },
+                { assert out.id == 'P11' },
+                // provenance and log hold the device, times and session: only what the module promises
+                { assert path(out.provenance).json.protocol == 'plate_lysis' },
+                { assert path(out.provenance).json.state == 'done' },
+                { assert path(out.log).exists() },
+                { assert snapshot(path(out.result).json).match() }
+            )
+        }
+    }
+
+    test("the params from ext.params") {
+
+        config "./params.config"
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P11-PARAMS', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            def out = process.out[0][0]
+            def provenance = path(out.provenance).json
+            assertAll(
+                { assert process.success },
+                { assert provenance.state == 'done' },
+                // the adapter ran what ext.params asked for, on top of its defaults
+                { assert provenance.params == [temperature: 70.0] },
+                { assert [temperature: 70.0].every { k, v -> provenance.program[k] == v } },
+                { assert snapshot(path(out.result).json).match() }
+            )
+        }
+    }
+}

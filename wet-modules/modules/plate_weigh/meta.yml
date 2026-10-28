@@ -1,0 +1,32 @@
+# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# (GET /devices: each robot's capability and protocols). One module per protocol.
+name: plate_weigh
+description: "Weigh a plate (gravimetric QC)"
+keywords: [wet-lab, weighing, plate_weigh]
+lab:
+  capability: weighing  # the hint the module declares (hints 'lab/capability')
+  protocol: plate_weigh
+  protocol_version: "1.0"
+  stop_boundary: "none (changes nothing; a failed weighing is retryable)"
+  params: input.schema.json  # set with ext.params; the lab's adapter holds defaults and limits
+input:
+  - plate:
+      type: record
+      description: The plate (id) and its plate-map wells (row, column, sample, type)
+output:
+  - id:
+      type: string
+      description: The plate ID
+  - result:
+      type: file
+      pattern: result.json
+      description: "What the balance measured: weight_g; wells[]"
+  - provenance:
+      type: file
+      pattern: provenance.json
+      description: The device job (device, attempt, state, times), any final state
+  - log:
+      type: file
+      pattern: labctl.log
+      description: Every request to the device adapter and its reply
+authors: ["@vagkaratzas"]

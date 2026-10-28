@@ -1,0 +1,88 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P16",
+                "reagent": "wash buffer",
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "volume_ul": 50.0
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "volume_ul": 50.0
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control",
+                        "volume_ul": 50.0
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "volume_ul": 50.0
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T10:01:32.521786678",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    },
+    "the params from ext.params": {
+        "content": [
+            {
+                "plate": "P16-PARAMS",
+                "reagent": "master mix",
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "volume_ul": 20.0
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "volume_ul": 20.0
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control",
+                        "volume_ul": 20.0
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "volume_ul": 20.0
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T13:33:04.59211691",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

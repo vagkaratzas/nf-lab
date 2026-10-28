@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.146.0",
-    "pylabrobot>=0.2.2",
+    "pylabrobot>=0.2.2,<1",  # 1.0 deprecates the front-end/backend API the bindings use (design repo CONCERNS §16)
     "uvicorn>=0.54.0",
 ]
 
@@ -16,6 +16,7 @@ dev = [
     "httpx2>=2.14.0",
     "jsonschema>=4.26.0",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
 ]
 
 [build-system]
@@ -24,3 +25,6 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "nf_lab_adapter"
+
+[tool.pytest.ini_options]
+addopts = "-n auto"  # each worker starts its own conformance adapters

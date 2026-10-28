@@ -19,6 +19,7 @@ import os
 import shutil
 import signal
 import socket
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -55,6 +56,11 @@ def auth() -> dict:
     return {"Authorization": f"Bearer {t}"} if (t := os.environ.get("NF_LAB_TOKEN")) else {}
 
 
+# every capability once, two liquid handlers: the 11 PyLabRobot models a deck view for, and 5 it doesn't
+TOUR_DEVICES = ("liquid-handling:2,plate-reading:1,thermocycling:1,qpcr:1,shaking:1,heating-shaking:1,temperature-control:1,"
+                "tilting:1,centrifugation:1,incubation:1,weighing:1,pumping:1,powder-dispensing:1,sealing:1,peeling:1,"
+                "barcode-reading:1")
+
 # example -> (title, the adapter's NF_LAB_DEVICES, the scenarios scripted for it). Manual runs any example.
 EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
     "plate_transfer": ("Plate transfer", "2", ["pool", "estop", "manual"]),
@@ -62,6 +68,7 @@ EXAMPLES: dict[str, tuple[str, str, list[str]]] = {
     "parallel_extraction": ("Parallel extraction: RNA and DNA side by side, then PCR", "liquid-handling:2,thermocycling:1",
                             ["side_by_side", "manual"]),  # one plate (the example's default map)
     "qpcr": ("qPCR screen: 1000 samples, extraction then RT-qPCR", "liquid-handling:4,qpcr:6", ["scale", "manual"]),
+    "lab_tour": ("Lab tour: five routines side by side, every simulated machine", TOUR_DEVICES, ["tour", "manual"]),
 }
 
 
@@ -366,6 +373,32 @@ async def scale(demo: Demo) -> None:
                    "handled it. The lab report lists every job.")
 
 
+async def tour(demo: Demo) -> None:
+    await demo.say("Lab tour: five plates, five routines, 17 robots, one of each machine (two liquid handlers). "
+                   "Starting fresh: a new ledger and empty decks.")
+    await demo.fresh_adapter(simulated_operator=True, step=demo.s.step / 2)  # about 2.5 minutes
+    await demo.say("The adapter's simulated operator moves the plates, so the deck views stay in front: a PCR set-up, "
+                   "a cell viability assay, a DNA extraction with a yield check, a compound plate and an RT-qPCR plate.")
+    await demo.start_pipeline()
+    seen: set[str] = set()
+    total = len(await demo.api("GET", "/devices"))
+    while demo.pipeline.returncode is None:
+        # from the ledger, not GET /devices: a short job can start and end while a narration line is up
+        with sqlite3.connect(f"file:{demo.run_dir / 'ledger.sqlite'}?mode=ro", uri=True) as db:
+            started = db.execute("SELECT device_id, protocol, plate FROM jobs WHERE started_at IS NOT NULL "
+                                 "ORDER BY started_at").fetchall()
+        new = {d: (p, pl) for d, p, pl in started if d not in seen}
+        seen.update(new)
+        if new:
+            await demo.say("First job on " + ", ".join(f"{d} ({p} on plate {pl})" for d, (p, pl) in new.items()) +
+                           f". {len(seen)} of {total} robots have worked so far.")
+        await asyncio.sleep(max(demo.s.beat, demo.s.tick))
+    steps = demo.run_dir / "results" / "steps.csv"
+    rows = steps.read_text().splitlines()[1:] if steps.exists() else []
+    await demo.say(f"Run finished (exit {demo.pipeline.returncode}). results/steps.csv: {len(rows)} jobs, each with "
+                   "its plate, the robot that ran it and when; the plates' results are in results/<routine>/.")
+
+
 async def manual(demo: Demo) -> None:
     await demo.say(f"Manual: a fresh ledger, empty decks. Starting examples/{demo.example}.")
     await demo.fresh_adapter()
@@ -393,5 +426,7 @@ SCENARIOS: dict[str, tuple[str, str, Callable[[Demo], Awaitable[None]]]] = {
                                      "the operator moves the plates", side_by_side),
     "scale": ("Scale", "1000 samples on 11 plates over 10 robots; the adapter's simulated operator moves the plates",
               scale),
+    "tour": ("Tour", "Five plates, five routines over 17 robots; the adapter's simulated operator moves the plates",
+             tour),
     "manual": ("Manual", "A fresh ledger, empty decks and the pipeline running: you are the operator", manual),
 }

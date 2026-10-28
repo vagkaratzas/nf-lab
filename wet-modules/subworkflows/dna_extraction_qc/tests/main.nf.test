@@ -1,0 +1,24 @@
+nextflow_pipeline {
+
+    name "Test Workflow DNA_EXTRACTION_QC"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "dna_extraction_qc"
+    tag "plate_lysis"
+    tag "plate_spin"
+    tag "dna_extraction"
+    tag "plate_read"
+
+    test("P24 - two samples, a negative, a positive control and an extraction blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // every step ran once, in order: plate_lysis → plate_spin → dna_extraction → plate_read
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

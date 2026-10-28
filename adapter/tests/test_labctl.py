@@ -14,7 +14,7 @@ import uvicorn
 
 from nf_lab_adapter.app import Device, create_app
 from nf_lab_adapter.bindings.fake import FakeBackend
-from nf_lab_adapter.labctl import REPORT_COLUMNS, Client, task_hash
+from nf_lab_adapter.labctl import REPORT_COLUMNS, Client, default_key, task_hash
 
 
 @contextmanager
@@ -42,7 +42,7 @@ def serve(tmp_path, step: float = 0.05, token: str | None = None):
 
 def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float | None = 2, wait=True,
            out: Path | None = None, wells=("A1:S1", "B1:S2"), poll: float = 0.05, session: str | None = None,
-           **popen):
+           params: str | None = None, **popen):
     cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--capability", "liquid-handling",
            "--protocol", protocol, "--protocol-version", "1.0", "--plate", "P1", "--wells", *wells,
            "--adapter", url, "--poll", str(poll), "--outdir", str(out or tempfile.mkdtemp())]
@@ -50,6 +50,7 @@ def labctl(url: str, protocol: str = "ok", key: str | None = None, grace: float 
     cmd += ["--key", key] if key else []
     cmd += ["--wait"] if wait else []
     cmd += ["--session", session] if session else []
+    cmd += ["--params", params] if params else []
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **popen)
 
 
@@ -196,3 +197,70 @@ def test_labctl_sends_the_token_from_the_environment(tmp_path):
         assert code == 0 and job["state"] == "done"
         assert "t0ken" not in (out / "labctl.log").read_text()  # the log never holds the token
 
+
+
+def test_params_reach_the_job_through_stdin_and_join_the_key(tmp_path):
+    with serve(tmp_path) as (url, _):
+        p = labctl(url, "plate_transfer", out=tmp_path / "a", params="-", stdin=subprocess.PIPE)
+        out, err = p.communicate('{"volume_ul": 120}\n', timeout=10)  # a wet module's heredoc
+        assert p.returncode == 0, err
+        provenance = json.loads((tmp_path / "a" / "provenance.json").read_text())
+        assert provenance["params"] == {"volume_ul": 120} and provenance["program"] == {"volume_ul": 120.0}
+        wells = [{"row": "A", "column": 1, "sample": "S1", "type": "sample"},
+                 {"row": "B", "column": 1, "sample": "S2", "type": "sample"}]
+        assert provenance["idempotency_key"] == default_key("plate_transfer", "1.0", "P1", wells, {"volume_ul": 120})
+
+        code, job = finish(labctl(url, "plate_transfer", params="null"))  # a module with no ext.params
+        assert code == 0 and job["params"] == {} and job["program"] == {"volume_ul": 150.0}
+
+
+def test_the_key_without_params_is_the_key_before_params():
+    wells = [{"row": "A", "column": 1, "sample": "S1", "type": "sample"}]
+    before = __import__("hashlib").sha256(json.dumps(["p", "1.0", "P1", wells]).encode()).hexdigest()
+    assert default_key("p", "1.0", "P1", wells) == default_key("p", "1.0", "P1", wells, {}) == before
+    assert default_key("p", "1.0", "P1", wells, {"a": 1, "b": 2}) == default_key("p", "1.0", "P1", wells, {"b": 2, "a": 1})
+    assert default_key("p", "1.0", "P1", wells, {"a": 1}) not in (before, default_key("p", "1.0", "P1", wells, {"a": 2}))
+
+
+def test_a_param_the_adapter_refuses_fails_the_task_and_queues_nothing(tmp_path):
+    with serve(tmp_path) as (url, _):
+        code, _ = finish(labctl(url, "plate_transfer", key="bad", out=tmp_path / "o", params='{"volume_ul": 900}'))
+        assert code == 1  # not retried: the same params would be refused again
+        assert "refused: 422" in (tmp_path / "o" / "labctl.log").read_text()
+        assert not (tmp_path / "o" / "provenance.json").exists()
+        assert Client(url, 0, 0).call("GET", "/devices")[0]["status"] != "running"
+
+
+def test_params_that_are_not_an_object_of_scalars_are_refused_before_any_request(tmp_path):
+    for i, bad in enumerate(['"a string"', "[1]", '{"g": [1]}', '{"g": NaN}', '{"g": 1e400}', "{nope"]):
+        out = tmp_path / str(i)
+        code, _ = finish(labctl("http://127.0.0.1:9", "plate_spin", out=out, params=bad))
+        log = (out / "labctl.log").read_text()
+        assert code == 1 and "refused: --params" in log and "-> POST" not in log, (bad, log)
+
+
+def bare_labctl(url: str, out: Path, *extra: str, env: dict, key: str = "env") -> subprocess.Popen:
+    """labctl as a wet module runs it under the lab executor: no --capability, --queue or --session."""
+    cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--wait", "--protocol", "ok", "--protocol-version", "1.0",
+           "--plate", "P1", "--wells", "A1:S1", "--adapter", url, "--poll", "0.05", "--outdir", str(out), "--key", key, *extra]
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("NF_LAB_")}
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={**clean, **env})
+
+
+def test_capability_queue_and_session_come_from_the_lab_executors_env(tmp_path):
+    with serve(tmp_path) as (url, _):
+        workdir = tmp_path / "ab" / ("c" * 30)  # a Nextflow work dir: the ledger records the task with the session
+        code, job = finish(bare_labctl(url, workdir, env={"NF_LAB_CAPABILITY": "liquid-handling", "NF_LAB_SESSION": "s1"}))
+        assert code == 0 and (job["capability"], job["queue"]) == ("liquid-handling", None)
+        assert [j["job_id"] for j in Client(url, 0, 0).call("GET", "/jobs?session=s1")] == [job["job_id"]]
+
+        # a flag wins over the environment: no robot is in queue "elsewhere", so the submit is refused
+        code, _ = finish(bare_labctl(url, tmp_path / "b", "--queue", "elsewhere", key="flag",
+                                     env={"NF_LAB_CAPABILITY": "liquid-handling", "NF_LAB_QUEUE": ""}))
+        assert code == 1 and "refused: 404" in (tmp_path / "b" / "labctl.log").read_text()
+
+
+def test_no_capability_anywhere_is_a_usage_error(tmp_path):
+    p = bare_labctl("http://127.0.0.1:9", tmp_path / "o", env={})
+    _, err = p.communicate(timeout=10)
+    assert p.returncode == 2 and "no capability" in err

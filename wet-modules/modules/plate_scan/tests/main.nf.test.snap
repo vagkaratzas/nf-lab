@@ -1,0 +1,41 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P21",
+                "barcode": "P21",
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T10:28:45.052358927",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    }
+}

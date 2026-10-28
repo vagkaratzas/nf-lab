@@ -1,0 +1,86 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P13",
+                "program": {
+                    "angle_deg": 10.0,
+                    "duration_s": 120
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T08:40:34.352417829",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    },
+    "the params from ext.params": {
+        "content": [
+            {
+                "plate": "P13-PARAMS",
+                "program": {
+                    "angle_deg": 15.0,
+                    "duration_s": 120
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T13:31:50.008514496",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

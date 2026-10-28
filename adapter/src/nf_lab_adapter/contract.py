@@ -7,7 +7,15 @@ and is the contract other adapter implementations follow.
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 
 
 class State(StrEnum):
@@ -53,8 +61,14 @@ class JobSpec(BaseModel):
     protocol_version: str = Field(min_length=1)
     plate: str = Field(min_length=1, description="Plate ID from the plate map")
     wells: list[Well] = Field(min_length=1, description="One per filled well; kept in row, column order")
+    params: dict[str, StrictBool | StrictInt | StrictFloat | StrictStr] = Field(
+        default_factory=dict, examples=[{"g": 500.0, "duration_s": 120}],
+        description="The protocol's parameters (its module's input.schema.json): what the pipeline asks for. "
+                    "A param not given runs at the lab's or the binding's default. Unknown, wrong-typed or "
+                    "out-of-range params are refused (422). Part of the idempotency key")
     idempotency_key: str = Field(
-        min_length=1, description="hash(protocol, version, plate, wells in row, column order); one physical job"
+        min_length=1, description="hash(protocol, version, plate, wells in row, column order[, params by name]); "
+                                  "one physical job"
     )
 
     @field_validator("wells")
@@ -84,6 +98,9 @@ class Job(JobSpec):
         description="The device that took the job; None while queued: the free device of the capability "
                     "whose deck holds the plate takes it"
     )
+    program: dict | None = Field(
+        description="What the protocol runs with: the binding's defaults, then the lab's, then `params`. "
+                    "Resolved when the job is queued; outside the idempotency key")
     state: State
     stoppable: bool = Field(description="True until the first liquid moves (the stop boundary)")
     stop_requested: bool = Field(description="safe_stop arrived after the stop boundary")

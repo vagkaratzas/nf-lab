@@ -23,8 +23,8 @@ Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side*
 |---|---|---|
 | `src/` | The Nextflow plugin (Groovy): the `lab` executor, the `lab {}` config scope, the `labPlate` function | this README |
 | `adapter/` | The device adapter (Python, FastAPI, SQLite): the job ledger, robot pool, queues, the deck page for people, the bindings that drive PyLabRobot's simulated machines; `labctl`, the client a wet task runs; `openapi.json`, the contract; the conformance kit | [adapter/README.md](adapter/README.md) |
-| `wet-modules/` | Nextflow modules, one per protocol, nf-core style, and a subworkflow | [wet-modules/README.md](wet-modules/README.md) |
-| `examples/` | Pipelines: `plate_transfer`, `plate_assay` (transfer, then read), `parallel_extraction` (extraction, then PCR), `qpcr` (1000 samples: extraction, then RT-qPCR); `hello` | their `main.nf` and `nextflow.config` |
+| `wet-modules/` | Nextflow modules, one per protocol, nf-core style, and subworkflows that chain them | [wet-modules/README.md](wet-modules/README.md) |
+| `examples/` | Pipelines: `plate_transfer`, `plate_assay` (transfer, then read), `parallel_extraction` (extraction, then PCR), `qpcr` (1000 samples: extraction, then RT-qPCR), `lab_tour` (five routines over every simulated machine); `hello` | their `main.nf` and `nextflow.config` |
 | `dashboard/` | Live view of a run (Nextflow, adapter calls, ledger, robots) and scripted demos | [dashboard/README.md](dashboard/README.md) |
 | `validation/` | End-to-end checks of the guarantees, in CI | [Tests](#tests) |
 
@@ -151,7 +151,7 @@ A pipeline never talks to your robot. Its wet tasks submit jobs to a device adap
 
 | Your robot | You add | nf-lab changes |
 |---|---|---|
-| PyLabRobot already drives it | Nothing: the lab picks PyLabRobot's driver and deck for it, and the existing PyLabRobot bindings run their protocols on it | None. Today the bindings in `adapter/src/nf_lab_adapter/bindings/plr.py` run PyLabRobot's simulator on a fixed deck; choosing the driver and deck in lab config is planned |
+| PyLabRobot already drives it | Nothing: the lab picks PyLabRobot's driver and deck for it, and the existing PyLabRobot bindings run their protocols on it | None. Today the bindings in `adapter/src/nf_lab_adapter/bindings/plr/` (one module per machine) run PyLabRobot's simulator (or, where PyLabRobot has none, a simulated backend of ours) on a fixed deck; choosing the driver and deck in lab config is planned |
 | A SiLA 2 server or a vendor API | A binding: a class implementing `Backend` (`adapter/src/nf_lab_adapter/bindings/__init__.py`) | Today, wiring it into `adapter/src/nf_lab_adapter/app.py` (where `NF_LAB_BACKEND` and the capability pick a binding). Planned: bindings as your own Python package, found through an entry point, with no nf-lab change |
 | Your own scheduler that already keeps jobs | Your own adapter that implements `adapter/openapi.json` | None |
 

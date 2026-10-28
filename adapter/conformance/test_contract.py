@@ -3,8 +3,11 @@
 Backend-agnostic: no scripted failures, no timing assumptions. Where a reply depends on timing
 (a safe_stop before or after the stop boundary), the check holds for every outcome."""
 
+import json
+import re
 import time
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -54,6 +57,8 @@ def test_bad_requests_and_unknown_ids_are_refused(api, opts):
                   [{**a1, "type": "standard"}], []]:
         assert api("submit", new_request(opts, wells=wells)).status == 422, wells
     assert api("submit", new_request(opts, task_hash="not-a-task-hash")).status == 422
+    assert api("submit", new_request(opts, params={"conformance_no_such_param": 1})).status == 422  # never ignored
+    assert api("submit", new_request(opts, params={"g": [1]})).status == 422  # params are scalars
     assert api("submit", new_request(opts, capability="no-such-capability")).status == 404
     unknown = uuid.uuid4().hex
     assert api("status", job_id=unknown).status == 404
@@ -130,10 +135,9 @@ def test_every_operation_refuses_a_missing_or_wrong_token(api):
             assert api(op, token=token, **args, **params).status == 401, f"{op} with token {token!r}"
 
 
-def test_every_operation_in_the_spec_was_checked(api, request):
-    """Keep last: a new operation in openapi.json needs a check here."""
-    this = request.node.callspec.id
-    selected = {i.originalname for i in request.session.items if i.module is request.module and i.callspec.id == this}
-    if selected != {name for name in vars(request.module) if name.startswith("test_")}:
-        pytest.skip("only some checks selected (-k, -m or test ids)")
-    assert api.called == set(api.ops), f"not checked: {sorted(set(api.ops) - api.called)}"
+def test_every_operation_in_the_spec_has_a_check(request):
+    """A new operation in openapi.json needs a check here (the token check alone doesn't count)."""
+    spec = json.loads(Path(request.config.getoption("spec")).read_text())
+    ops = {o["operationId"] for item in spec["paths"].values() for o in item.values()}
+    named = set(re.findall(r'api\("(\w+)"', Path(__file__).read_text()))
+    assert ops <= named, f"not checked: {sorted(ops - named)}"

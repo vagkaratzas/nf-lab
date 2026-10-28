@@ -1,0 +1,24 @@
+nextflow_pipeline {
+
+    name "Test Workflow COMPOUND_PREP"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "compound_prep"
+    tag "powder_dispense"
+    tag "plate_weigh"
+    tag "reagent_dispense"
+    tag "plate_mix"
+
+    test("P25 - two compounds, a negative, a positive control and a blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // every step ran once, in order: powder_dispense → plate_weigh → reagent_dispense → plate_mix
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

@@ -56,14 +56,7 @@
             "description": "Key already used with a different payload"
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "A param is unknown, of the wrong type, out of range or other than the lab fixed; nothing was queued"
           }
         }
       },
@@ -379,11 +372,38 @@
             "title": "Wells",
             "description": "One per filled well; kept in row, column order"
           },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params",
+            "description": "The protocol's parameters (its module's input.schema.json): what the pipeline asks for. A param not given runs at the lab's or the binding's default. Unknown, wrong-typed or out-of-range params are refused (422). Part of the idempotency key",
+            "examples": [
+              {
+                "duration_s": 120,
+                "g": 500.0
+              }
+            ]
+          },
           "idempotency_key": {
             "type": "string",
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "hash(protocol, version, plate, wells in row, column order); one physical job"
+            "description": "hash(protocol, version, plate, wells in row, column order[, params by name]); one physical job"
           },
           "job_id": {
             "type": "string",
@@ -405,6 +425,19 @@
             ],
             "title": "Device Id",
             "description": "The device that took the job; None while queued: the free device of the capability whose deck holds the plate takes it"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program",
+            "description": "What the protocol runs with: the binding's defaults, then the lab's, then `params`. Resolved when the job is queued; outside the idempotency key"
           },
           "state": {
             "$ref": "#/components/schemas/State"
@@ -518,6 +551,7 @@
           "job_id",
           "attempt",
           "device_id",
+          "program",
           "state",
           "stoppable",
           "stop_requested",
@@ -629,11 +663,38 @@
             "title": "Wells",
             "description": "One per filled well; kept in row, column order"
           },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params",
+            "description": "The protocol's parameters (its module's input.schema.json): what the pipeline asks for. A param not given runs at the lab's or the binding's default. Unknown, wrong-typed or out-of-range params are refused (422). Part of the idempotency key",
+            "examples": [
+              {
+                "duration_s": 120,
+                "g": 500.0
+              }
+            ]
+          },
           "idempotency_key": {
             "type": "string",
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "hash(protocol, version, plate, wells in row, column order); one physical job"
+            "description": "hash(protocol, version, plate, wells in row, column order[, params by name]); one physical job"
           },
           "job_id": {
             "type": "string",
@@ -655,6 +716,19 @@
             ],
             "title": "Device Id",
             "description": "The device that took the job; None while queued: the free device of the capability whose deck holds the plate takes it"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program",
+            "description": "What the protocol runs with: the binding's defaults, then the lab's, then `params`. Resolved when the job is queued; outside the idempotency key"
           },
           "state": {
             "$ref": "#/components/schemas/State"
@@ -760,6 +834,7 @@
           "job_id",
           "attempt",
           "device_id",
+          "program",
           "state",
           "stoppable",
           "stop_requested",
@@ -838,11 +913,38 @@
             "title": "Wells",
             "description": "One per filled well; kept in row, column order"
           },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params",
+            "description": "The protocol's parameters (its module's input.schema.json): what the pipeline asks for. A param not given runs at the lab's or the binding's default. Unknown, wrong-typed or out-of-range params are refused (422). Part of the idempotency key",
+            "examples": [
+              {
+                "duration_s": 120,
+                "g": 500.0
+              }
+            ]
+          },
           "idempotency_key": {
             "type": "string",
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "hash(protocol, version, plate, wells in row, column order); one physical job"
+            "description": "hash(protocol, version, plate, wells in row, column order[, params by name]); one physical job"
           },
           "task_hash": {
             "anyOf": [

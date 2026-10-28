@@ -21,7 +21,7 @@ Settings (environment variables):
 
 | Variable | Default | What it does |
 |---|---|---|
-| `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated machines (a `plate-reading` robot is a plate reader, a `thermocycling` one a thermocycler, a `qpcr` one a real-time PCR instrument, any other a liquid handler). `fake`: a scripted device for tests |
+| `NF_LAB_BACKEND` | `fake` | `plr`: PyLabRobot's simulated machines, one per capability in `bindings.plr.MACHINES` (a `plate-reading` robot is a plate reader, a `thermocycling` one a thermocycler, a `qpcr` one a real-time PCR instrument, `centrifugation` a centrifuge, …; any capability not listed there a liquid handler). `fake`: a scripted device for tests |
 | `NF_LAB_DEVICES` | `1` | How many robots, all with the `liquid-handling` capability (`plr-sim-1`, `plr-sim-2`… or `fake-1`…); or pools as `capability[/queue]:count,…`, e.g. `liquid-handling/opentrons:2,liquid-handling/hamilton:1` (`opentrons-1`, `opentrons-2`, `hamilton-1`). A job naming a queue (`labctl --queue`, from Nextflow's `queue` directive) runs only on that queue's robots |
 | `NF_LAB_VISUALIZER` | off | `1`: each PyLabRobot robot serves a live view of its deck (port 1337, then 1338…), linked from its row on the deck page |
 | `NF_LAB_SIMULATED_OPERATOR` | on for `fake`, off for `plr` | `1`: nobody at the bench is needed, because the adapter loads and unloads plates itself. Failed jobs still wait for a person |
@@ -29,6 +29,7 @@ Settings (environment variables):
 | `NF_LAB_STEP` | `1.0` | Seconds per simulated robot step |
 | `NF_LAB_SILENT_AFTER` | `600` | Seconds without a report from a robot before its job fails as `device_silent` |
 | `NF_LAB_TOKEN` | unset | Every request must carry it as `Authorization: Bearer <token>`, the deck page's buttons included; unset: no check. See [The token](#the-token) |
+| `NF_LAB_LIMITS` | unset | The lab's limits file for protocol parameters (TOML), read at start; unset: the machines' own limits. See [Protocol parameters](#protocol-parameters) |
 
 ## Three questions the adapter answers
 
@@ -40,7 +41,7 @@ The deck page lists each robot's protocols under its name. For the same list wit
 curl -s localhost:8000/devices | jq '.[] | {device_id, capability, protocols}'
 ```
 
-A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot liquid handler runs `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate). It also runs `plate_split` (the same, 100 µL into each of two aliquot plates, which the pipeline names) and `rna_extraction` / `dna_extraction` (on an aliquot: 50 µL lysis buffer into each plate-map well, then 100 µL of lysate to a 96-well PCR plate (200 µL wells), the plate the thermocycler takes; each well's `eluate_ul` and a simulated `yield_ng_ul`). The plate reader runs `plate_read` (absorbance at 450 nm), and the thermocycler `pcr`: one fixed program (`PCR` in `src/nf_lab_adapter/bindings/__init__.py`), paced a fifth of `NF_LAB_STEP` per cycle, past the stop boundary once cycling starts. The real-time PCR instrument runs `qpcr`: one-step RT-qPCR (`QPCR`: reverse transcription, then 40 cycles) on the same simulated thermocycler, with a simulated fluorescence read giving each well a threshold cycle `ct` (null: undetermined; PyLabRobot simulates no qPCR instrument). Plate maps take a `positive_control` well type besides `negative_control` and `blank`. The fake backend runs these protocols too, instantly and with the same result shape, so `examples/plate_transfer` runs without PyLabRobot; its other protocols (`ok`, `preflight_fail`, `protocol_fail`…) are scripted failures for tests.
+A job asks for a **capability** (`liquid-handling`), not a robot. The PyLabRobot liquid handler runs `plate_transfer`: it fills each listed well of the destination plate from the same well of the sample plate (controls and blanks: from the buffer plate). It also runs `plate_split` (the same, 100 µL into each of two aliquot plates, which the pipeline names) and `rna_extraction` / `dna_extraction` (on an aliquot: 50 µL lysis buffer into each plate-map well, then 100 µL of lysate to a 96-well PCR plate (200 µL wells), the plate the thermocycler takes; each well's `eluate_ul` and a simulated `yield_ng_ul`). The plate reader runs `plate_read` (absorbance at 450 nm), and the thermocycler `pcr`: its PCR program, paced a fifth of `NF_LAB_STEP` per cycle, past the stop boundary once cycling starts. The real-time PCR instrument runs `qpcr`: one-step RT-qPCR (reverse transcription, then 40 cycles) on the same simulated thermocycler, with a simulated fluorescence read giving each well a threshold cycle `ct` (null: undetermined; PyLabRobot simulates no qPCR instrument). Plate holders put the plate through their program, past the stop boundary as it starts, and return it in `result.program`: `plate_mix` (shaker), `plate_lysis` (heater-shaker), `heat_inactivation` (heat block; PyLabRobot's simulated one has no active cooling and reaches its target at once), `plate_tilt` (tilter), `plate_spin` (centrifuge, a balance plate in the other bucket) and `plate_incubate` (incubator: pre-flight heats it to the program's temperature, 37 °C by default, and picks a free rack site, then the boundary is taking the plate in off the loading tray, which it comes back to). The pump array runs `reagent_dispense` (50 µL into each plate-map well, one pump per plate column, read back from the plate), the powder dispenser `powder_dispense` (each well's `amount_mg` as the dispenser reports it) and the balance `plate_weigh` (read only, like `plate_read`: `weight_g`, the tare plus the plate-map liquid). PyLabRobot 0.2.2 has drivers but no simulator for a sealer, a peeler or a barcode scanner, so these run on simulated backends of our own (PyLabRobot's backend interface, logging only): `plate_seal` and `plate_unseal` (plate holders; the boundary is the seal or the peel) and `plate_scan` (read only: the barcode must be the job's plate ID, else the job fails before anything happens). Plate maps take a `positive_control` well type besides `negative_control` and `blank`. The fake backend runs these protocols too, instantly and with the same result shape, so `examples/plate_transfer` runs without PyLabRobot; its other protocols (`ok`, `preflight_fail`, `protocol_fail`…) are scripted failures for tests. Every volume, temperature, time and reagent above is the protocol's default: a job's params change it (next section).
 
 ### Which robots are free, and which are ready?
 
@@ -99,6 +100,25 @@ Then press **Unload**. Unload is refused until Succeeded or Failed is pressed: a
 - **Don't remove only some wells of a plate.** A plate's job is identified by all its wells, so a trimmed plate is a new job: the robot would transfer the remaining wells again, including those that already got liquid. Press Succeeded instead, and let the wells read at 0 µL drop out downstream.
 - **The resolution travels with the data.** The job's `attempt` and `reason` (e.g. `resolved as done by ana; was failed_in_protocol: tip pickup failed`) are in the task's `provenance.json`. In `examples/plate_transfer` they are also columns of `samples.csv` and of each plate report. `samples.csv` leaves out wells read at 0 µL, while the plate report keeps every well.
 
+## Protocol parameters
+
+A job's `params` set what its protocol runs with: `{"g": 500, "duration_s": 120}` for a `plate_spin`. A pipeline sets them per process with `ext.params` (see `wet-modules/README.md`); `labctl run --params '<json>'` sends them. Each protocol's names, types, defaults and the simulated machines' limits are in `PARAMS` (`src/nf_lab_adapter/bindings/__init__.py`); each wet module's `input.schema.json` lists the same names and types. At submit the adapter resolves the job's **program**: the binding's defaults, then the lab's, then the params asked for. It refuses the job (422, nothing queued) for an unknown param, a wrong type, a value out of range or one other than the lab fixed, so a typo never runs at the default. The job keeps both, `params` (as asked, part of the idempotency key) and `program` (as run), and so does the task's `provenance.json`. A job already in the ledger keeps the program it was queued with.
+
+A lab narrows the machines' limits, sets its own defaults or fixes values in a TOML file named by `NF_LAB_LIMITS`, one table per protocol and param:
+
+```toml
+[plate_spin.g]
+max = 500.0          # our rotor
+[plate_incubate.temperature]
+fixed = 37.0         # any other value is refused; asking for 37.0 is fine
+[pcr.cycles]
+default = 35
+[reagent_dispense.reagent]
+choices = ["master mix", "viability reagent", "DMSO"]
+```
+
+Keys: `min` and `max` (numbers), `choices` (strings), `default`, `fixed`. Every value must fit the machine's own limits in `PARAMS`; a file that doesn't (or names an unknown protocol or param, or holds `nan`) stops the adapter at start. The file applies to every robot that runs the protocol.
+
 ## Submit a job by hand
 
 `labctl` is the same client a pipeline uses:
@@ -121,12 +141,14 @@ process PLATE_TRANSFER {
     ...
     script:
     """
-    labctl run --wait --session ${workflow.sessionId} --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
+    labctl run --wait \\
+        --protocol plate_transfer \\
+        ...
     """
 }
 ```
 
-Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session from `--session`.
+The lab executor hands each wet task's `labctl` its capability (the `lab/capability` hint), its queue (the `queue` directive) and the run's session, as `NF_LAB_CAPABILITY`, `NF_LAB_QUEUE` and `NF_LAB_SESSION` in the task's environment, so a module names them once, as directives. They're per task and replace whatever the launch shell holds; a flag (`--capability`, `--queue`, `--session`) still wins, for `labctl` by hand. Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session.
 
 In `nextflow.config`, wet processes use the `lab` executor and retry only what is safe to retry:
 

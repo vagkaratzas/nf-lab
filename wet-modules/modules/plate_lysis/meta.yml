@@ -1,0 +1,32 @@
+# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# (GET /devices: each robot's capability and protocols). One module per protocol.
+name: plate_lysis
+description: "Heat and shake a plate to lyse the samples in each plate-map well"
+keywords: [wet-lab, heating-shaking, plate_lysis]
+lab:
+  capability: heating-shaking  # the hint the module declares (hints 'lab/capability')
+  protocol: plate_lysis
+  protocol_version: "1.0"
+  stop_boundary: "heating starts (plate untouched before)"
+  params: input.schema.json  # set with ext.params; the lab's adapter holds defaults and limits
+input:
+  - plate:
+      type: record
+      description: The plate (id) and its plate-map wells (row, column, sample, type)
+output:
+  - id:
+      type: string
+      description: The plate ID
+  - result:
+      type: file
+      pattern: result.json
+      description: "What the protocol did, per plate-map well: program (temperature, speed_rpm, duration_s); wells[]"
+  - provenance:
+      type: file
+      pattern: provenance.json
+      description: The device job (device, attempt, state, times), any final state
+  - log:
+      type: file
+      pattern: labctl.log
+      description: Every request to the device adapter and its reply
+authors: ["@vagkaratzas"]

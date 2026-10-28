@@ -1,0 +1,40 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: pcr_setup
+description: "Check each plate's barcode, set up its PCR (master mix, then samples), seal and spin it, cycle it, then peel the seal"
+keywords: [wet-lab, pcr, sealing, centrifugation, barcode]
+components:
+  - plate_scan
+  - reagent_dispense
+  - plate_transfer
+  - plate_seal
+  - plate_spin
+  - pcr
+  - plate_unseal
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - scanned:
+      type: record
+      description: "Each plate's barcode check (fails on a plate that isn't the job's) (id, result, provenance, log)"
+  - dispensed:
+      type: record
+      description: "Each plate's master mix pumped into each well (id, result, provenance, log)"
+  - transferred:
+      type: record
+      description: "Each plate's samples pipetted in (id, result, provenance, log)"
+  - sealed:
+      type: record
+      description: "Each plate's seal applied (id, result, provenance, log)"
+  - spun:
+      type: record
+      description: "Each plate's spin-down (id, result, provenance, log)"
+  - amplified:
+      type: record
+      description: "Each plate's thermocycling (id, result, provenance, log)"
+  - unsealed:
+      type: record
+      description: "Each plate's seal peeled (id, result, provenance, log)"
+authors: ["@vagkaratzas"]

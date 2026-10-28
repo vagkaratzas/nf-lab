@@ -1,0 +1,25 @@
+nextflow_pipeline {
+
+    name "Test Workflow CELL_VIABILITY"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "cell_viability"
+    tag "plate_scan"
+    tag "reagent_dispense"
+    tag "plate_mix"
+    tag "plate_incubate"
+    tag "plate_read"
+
+    test("P23 - two treated samples, an untreated and a killed control, and a blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // every step ran once, in order: plate_scan → reagent_dispense → plate_mix → plate_incubate → plate_read
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

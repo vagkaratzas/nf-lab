@@ -1,0 +1,96 @@
+nextflow_process {
+
+    name "Test Process PLATE_SPIN"
+    script "../main.nf"
+    process "PLATE_SPIN"
+
+    tag "modules"
+    tag "modules_wet"
+    tag "plate_spin"
+
+    test("two samples, a negative control and a blank") {
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P14', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            def out = process.out[0][0]
+            assertAll(
+                { assert process.success },
+                { assert out.id == 'P14' },
+                // provenance and log hold the device, times and session: only what the module promises
+                { assert path(out.provenance).json.protocol == 'plate_spin' },
+                { assert path(out.provenance).json.state == 'done' },
+                { assert path(out.log).exists() },
+                { assert snapshot(path(out.result).json).match() }
+            )
+        }
+    }
+
+    test("the params from ext.params") {
+
+        config "./params.config"
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P14-PARAMS', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            def out = process.out[0][0]
+            def provenance = path(out.provenance).json
+            assertAll(
+                { assert process.success },
+                { assert provenance.state == 'done' },
+                // the adapter ran what ext.params asked for, on top of its defaults
+                { assert provenance.params == [g: 500.0, duration_s: 120] },
+                { assert [g: 500.0, duration_s: 120].every { k, v -> provenance.program[k] == v } },
+                { assert snapshot(path(out.result).json).match() }
+            )
+        }
+    }
+
+    test("an unknown param is refused before the plate is touched") {
+
+        config "./refused.config"
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P14-REFUSED', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed },
+                { assert process.exitStatus == 1 },  // not retried: the same params would be refused again
+                { assert process.stdout.any { l -> l.contains('refused: 422') } }
+            )
+        }
+    }
+}

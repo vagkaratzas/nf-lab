@@ -1,0 +1,27 @@
+nextflow_pipeline {
+
+    name "Test Workflow PCR_SETUP"
+    script "./main.nf"
+
+    tag "subworkflows"
+    tag "subworkflows_wet"
+    tag "pcr_setup"
+    tag "plate_scan"
+    tag "reagent_dispense"
+    tag "plate_transfer"
+    tag "plate_seal"
+    tag "plate_spin"
+    tag "pcr"
+    tag "plate_unseal"
+
+    test("P22 - two samples, a negative, a positive control and a blank") {
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                // every step ran once, in order: plate_scan → reagent_dispense → plate_transfer → plate_seal → plate_spin → pcr → plate_unseal
+                { assert snapshot(workflow.trace.succeeded().collect { it.name }.sort()).match() }
+            )
+        }
+    }
+}

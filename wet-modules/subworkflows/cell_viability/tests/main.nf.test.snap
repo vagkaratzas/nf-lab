@@ -1,0 +1,18 @@
+{
+    "P23 - two treated samples, an untreated and a killed control, and a blank": {
+        "content": [
+            [
+                "CELL_VIABILITY:PLATE_INCUBATE (P23)",
+                "CELL_VIABILITY:PLATE_MIX (P23)",
+                "CELL_VIABILITY:PLATE_READ (P23)",
+                "CELL_VIABILITY:PLATE_SCAN (P23)",
+                "CELL_VIABILITY:REAGENT_DISPENSE (P23)"
+            ]
+        ],
+        "timestamp": "2026-10-28T11:27:24.978768536",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

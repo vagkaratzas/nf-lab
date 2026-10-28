@@ -1,8 +1,12 @@
 nextflow.enable.types = true
 
-// Wet step: one rna_extraction run on a liquid handler, through the device adapter.
-// The plate is an aliquot, controls and blanks included: lysis, then the lysate to a
-// PCR plate. result.json gives each well's eluate_ul and yield_ng_ul (analyte RNA).
+// Wet step: one rna_extraction run on a liquid handler, through the device adapter. The plate is
+// an aliquot, controls and blanks included: lysis, then the lysate to a PCR plate. result.json
+// gives each well's eluate_ul and yield_ng_ul (analyte RNA).
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'RNA_EXTRACTION' {
+// ext.params = [lysis_ul: 40.0, eluate_ul: 150.0] }`. The lab's adapter adds its defaults,
+// refuses unknown or out-of-range params (the task fails before the plate is touched) and records
+// the program it ran in provenance.json.
 process RNA_EXTRACTION {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,14 +25,16 @@ process RNA_EXTRACTION {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
-        --session ${workflow.sessionId} \\
-        --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol rna_extraction \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

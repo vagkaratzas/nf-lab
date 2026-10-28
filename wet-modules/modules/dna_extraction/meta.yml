@@ -8,6 +8,7 @@ lab:
   protocol: dna_extraction
   protocol_version: "1.0"
   stop_boundary: "first aspirate (moves liquid)"
+  params: input.schema.json  # set with ext.params; the lab's adapter holds defaults and limits
 input:
   - plate:
       type: record

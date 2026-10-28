@@ -3,6 +3,9 @@
     uv run pytest conformance --adapter http://lab-host:8000    # any adapter
     uv run pytest conformance                                   # this repo's: each binding and protocol in OWN
 
+Checks run in parallel (pytest-xdist, `-n auto` in pyproject.toml). Against real hardware, add
+`-n0` so one check at a time submits jobs to it.
+
 The kit calls only the contract's operations and validates every reply against the spec.
 Loading a plate is an operator action, outside the contract, so the adapter under test must
 load queued plates itself: here, the simulated operator (NF_LAB_SIMULATED_OPERATOR=1).
@@ -46,12 +49,27 @@ def pytest_report_header(config):
 
 # This repo's adapters, checked when no --adapter is given: backend → its robots, and the
 # (backend, capability, protocol) runs of the kit. One adapter per backend serves all its runs.
-OWN_DEVICES = {"fake": "2", "plr": "liquid-handling:2,plate-reading:2,thermocycling:2,qpcr:2"}
+OWN_DEVICES = {"fake": "2", "plr": "liquid-handling:2,plate-reading:2,thermocycling:2,qpcr:2,"
+                                   "shaking:2,heating-shaking:2,temperature-control:2,tilting:2,"
+                                   "centrifugation:2,incubation:2,pumping:2,weighing:2,powder-dispensing:2,"
+                                   "sealing:2,peeling:2,barcode-reading:2"}
 OWN = [("fake", "liquid-handling", "plate_transfer"),
        ("plr", "liquid-handling", "plate_transfer"),
        ("plr", "plate-reading", "plate_read"),
        ("plr", "thermocycling", "pcr"),
-       ("plr", "qpcr", "qpcr")]
+       ("plr", "qpcr", "qpcr"),
+       ("plr", "shaking", "plate_mix"),
+       ("plr", "heating-shaking", "plate_lysis"),
+       ("plr", "temperature-control", "heat_inactivation"),
+       ("plr", "tilting", "plate_tilt"),
+       ("plr", "centrifugation", "plate_spin"),
+       ("plr", "incubation", "plate_incubate"),
+       ("plr", "pumping", "reagent_dispense"),
+       ("plr", "weighing", "plate_weigh"),
+       ("plr", "powder-dispensing", "powder_dispense"),
+       ("plr", "sealing", "plate_seal"),
+       ("plr", "peeling", "plate_unseal"),
+       ("plr", "barcode-reading", "plate_scan")]
 
 
 def pytest_generate_tests(metafunc):
@@ -76,7 +94,7 @@ def own_adapters(tmp_path_factory):
         run_dir = tmp_path_factory.mktemp(backend)
         token = secrets.token_urlsafe(16)
         env = {**os.environ, "NF_LAB_TOKEN": token, "NF_LAB_BACKEND": backend, "NF_LAB_DEVICES": OWN_DEVICES[backend],
-               "NF_LAB_STEP": "0.05", "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
+               "NF_LAB_STEP": "0.01", "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
         env.pop("NF_LAB_VISUALIZER", None)
         log = (run_dir / "adapter.log").open("w")
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory",
@@ -133,13 +151,11 @@ class Contract:
     def __init__(self, base: str, spec: dict, token: str | None):
         self.base, self.spec, self.token = base, spec, token
         self.ops = {o["operationId"]: (m.upper(), p, o) for p, item in spec["paths"].items() for m, o in item.items()}
-        self.called: set[str] = set()
 
     def __call__(self, op: str, body: dict | None = None, query: dict | None = None, token: str | None = "",
                  **params: str) -> Reply:
         """token: "" sends the kit's own token, None none, anything else that."""
         method, path, o = self.ops[op]
-        self.called.add(op)
         url = self.base + path.format(**{k: urllib.parse.quote(v, safe="") for k, v in params.items()})
         if query:
             url += "?" + urllib.parse.urlencode(query)

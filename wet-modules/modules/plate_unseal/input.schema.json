@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plate_unseal params",
+  "description": "The protocol's parameters, set with the process's `ext.params`: names and types only. The lab's adapter holds the defaults and limits, and refuses an unknown, wrong-typed or out-of-range param.",
+  "type": "object",
+  "properties": {
+    "adhere_time_s": {
+      "type": "number",
+      "description": "Seconds the peeler adheres before peeling"
+    }
+  },
+  "additionalProperties": false
+}

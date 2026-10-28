@@ -1,0 +1,32 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: cell_viability
+description: "Check each cell plate's barcode, add the viability reagent, mix, incubate, then read the signal per well"
+keywords: [wet-lab, cell-based assay, viability, incubation, plate-reading, barcode]
+components:
+  - plate_scan
+  - reagent_dispense
+  - plate_mix
+  - plate_incubate
+  - plate_read
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - scanned:
+      type: record
+      description: "Each plate's barcode check (fails on a plate that isn't the job's) (id, result, provenance, log)"
+  - dispensed:
+      type: record
+      description: "Each plate's viability reagent pumped into each well (id, result, provenance, log)"
+  - mixed:
+      type: record
+      description: "Each plate's shaken to mix (id, result, provenance, log)"
+  - incubated:
+      type: record
+      description: "Each plate's incubated while the signal develops (id, result, provenance, log)"
+  - read:
+      type: record
+      description: "Each plate's signal per well (id, result, provenance, log)"
+authors: ["@vagkaratzas"]

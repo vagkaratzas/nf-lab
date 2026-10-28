@@ -1,8 +1,12 @@
 nextflow.enable.types = true
 
-// Wet step: one plate_read run on a plate reader, through the device adapter.
-// Reading moves no liquid: a failed or safe-stopped read is retryable (exit 75);
-// an e-stopped one waits for a person's Failed, then reruns with -resume.
+// Wet step: one plate_read run on a plate reader, through the device adapter. Reading moves no
+// liquid: a failed or safe-stopped read is retryable (exit 75); an e-stopped one waits for a
+// person's Failed, then reruns with -resume.
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'PLATE_READ' {
+// ext.params = [wavelength_nm: 600] }`. The lab's adapter adds its defaults, refuses unknown or
+// out-of-range params (the task fails before the plate is touched) and records the program it ran
+// in provenance.json.
 process PLATE_READ {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,14 +25,16 @@ process PLATE_READ {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
-        --session ${workflow.sessionId} \\
-        --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol plate_read \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

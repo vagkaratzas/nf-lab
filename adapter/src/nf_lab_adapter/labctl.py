@@ -27,7 +27,10 @@ and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
 Defaults for --adapter, --poll and --grace come from NF_LAB_ADAPTER, NF_LAB_POLL and
-NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope.
+NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope. Defaults
+for --capability, --queue and --session come from NF_LAB_CAPABILITY, NF_LAB_QUEUE and
+NF_LAB_SESSION: the lab executor sets them per task, from its lab/capability hint, its queue
+directive and the run's session. A flag always wins.
 
 NF_LAB_TOKEN, if set, goes with every request as a bearer token (an adapter that
 sets a token refuses requests without it: exit 1, not retried). In a pipeline it comes
@@ -48,6 +51,7 @@ Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -95,9 +99,30 @@ def well(token: str) -> dict:
             "type": parts[2] if len(parts) == 3 else "sample"}
 
 
-def default_key(protocol: str, version: str, plate: str, wells: list[dict]) -> str:
-    # wells sorted by the caller (row, column): the order they're listed in carries no meaning
-    return hashlib.sha256(json.dumps([protocol, version, plate, wells]).encode()).hexdigest()
+def default_key(protocol: str, version: str, plate: str, wells: list[dict], params: dict | None = None) -> str:
+    # wells sorted by the caller (row, column): the order they're listed in carries no meaning.
+    # No params: the key as before params existed. Params by name: their order carries none either.
+    payload = [protocol, version, plate, wells] + ([dict(sorted(params.items()))] if params else [])
+    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()
+
+
+def no_constant(name: str):
+    raise ValueError(f"{name} isn't a number")
+
+
+def protocol_params(text: str) -> dict:
+    """`--params`: a JSON object of scalars (string, finite number, bool), or `null` for none.
+    A wet module passes its `task.ext.params` this way, through stdin (`--params -`)."""
+    try:
+        params = json.loads(text, parse_constant=no_constant)  # NaN, Infinity: refused
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"--params isn't JSON: {e}")
+    if params is None:
+        return {}
+    if not isinstance(params, dict) or not all(
+            isinstance(v, (str, bool)) or isinstance(v, (int, float)) and math.isfinite(v) for v in params.values()):  # 1e400 is inf
+        raise argparse.ArgumentTypeError(f"--params must be a JSON object of strings, numbers or booleans, got {text.strip()}")
+    return params
 
 
 class Client:
@@ -161,7 +186,12 @@ def run(args: argparse.Namespace) -> int:
     outdir.mkdir(parents=True, exist_ok=True)
     _logfile = open(outdir / "labctl.log", "a")
     wells = sorted(args.wells, key=lambda w: (w["row"], w["column"]))
-    key = args.key or default_key(args.protocol, args.protocol_version, args.plate, wells)
+    try:
+        params = protocol_params(sys.stdin.read() if args.params == "-" else args.params) if args.params else {}
+    except argparse.ArgumentTypeError as e:
+        log(f"refused: {e}")  # before any request: nothing queued
+        return 1
+    key = args.key or default_key(args.protocol, args.protocol_version, args.plate, wells, params)
     client = Client(args.adapter, args.grace, args.poll)
     job: dict | None = None
 
@@ -182,7 +212,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         job = client.call("POST", "/jobs", {
             "capability": args.capability, "queue": args.queue, "protocol": args.protocol,
-            "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
+            "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells, "params": params,
             "idempotency_key": key, "task_hash": task_hash(outdir.resolve()), "session_id": args.session,
         })
         pool = args.capability + (f" pool, queue {args.queue}" if args.queue else " pool")
@@ -245,22 +275,30 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="labctl", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="submit (or find) a job and wait for it")
-    r.add_argument("--capability", required=True)
-    r.add_argument("--queue", help="only this queue's devices may take the job (Nextflow's queue directive); "
-                                   "not part of the key")
+    r.add_argument("--capability", default=os.environ.get("NF_LAB_CAPABILITY") or None,
+                   help="what the job needs (default: NF_LAB_CAPABILITY, which the lab executor sets from the "
+                        "task's lab/capability hint)")
+    r.add_argument("--queue", default=os.environ.get("NF_LAB_QUEUE") or None,
+                   help="only this queue's devices may take the job (default: NF_LAB_QUEUE, which the lab "
+                        "executor sets from the task's queue directive); not part of the key")
     r.add_argument("--protocol", required=True)
     r.add_argument("--protocol-version", required=True)
     r.add_argument("--plate", required=True, help="plate ID from the plate map")
     r.add_argument("--wells", nargs="+", required=True, type=well, metavar="WELL:SAMPLE[:TYPE]",
                    help="the plate's filled wells, e.g. A1:S01 D2:NC1:negative_control H12:BLK1:blank")
-    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate and wells)")
+    r.add_argument("--params", metavar="JSON",
+                   help='the protocol\'s parameters as a JSON object, e.g. \'{"g": 500}\', or - to read it from stdin; '
+                        'part of the key. The adapter refuses unknown or out-of-range ones')
+    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate, wells and params)")
     r.add_argument("--wait", action="store_true", help="poll until the job ends; exit with its code")
     r.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
     r.add_argument("--poll", type=float, default=env_float("NF_LAB_POLL", 2.0), help="seconds between status polls")
     r.add_argument("--grace", type=float, default=env_float("NF_LAB_GRACE", 300.0),
                    help="seconds to absorb an unreachable adapter")
     r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
-    r.add_argument("--session", help="the Nextflow session (${workflow.sessionId}); the ledger keeps it per job")
+    r.add_argument("--session", default=os.environ.get("NF_LAB_SESSION") or None,
+                   help="the Nextflow session (default: NF_LAB_SESSION, which the lab executor sets); "
+                        "the ledger keeps it per job")
     r.set_defaults(func=run)
     rp = sub.add_parser("report", help="every job a Nextflow session submitted or collected, failures too")
     rp.add_argument("--session", required=True, help="the Nextflow session (${workflow.sessionId})")
@@ -271,6 +309,9 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--outdir", default=".", help="where lab_report.json and lab_report.tsv go")
     rp.set_defaults(func=report)
     args = p.parse_args(argv)
+    if args.cmd == "run" and not args.capability:
+        p.error("run: no capability: pass --capability, or run it as a task of the lab executor "
+                "(which sets NF_LAB_CAPABILITY from the task's lab/capability hint)")
     return args.func(args)
 
 
