@@ -27,7 +27,10 @@ and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
 Defaults for --adapter, --poll and --grace come from NF_LAB_ADAPTER, NF_LAB_POLL and
-NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope.
+NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope. Defaults
+for --capability, --queue and --session come from NF_LAB_CAPABILITY, NF_LAB_QUEUE and
+NF_LAB_SESSION: the lab executor sets them per task, from its lab/capability hint, its queue
+directive and the run's session. A flag always wins.
 
 NF_LAB_TOKEN, if set, goes with every request as a bearer token (an adapter that
 sets a token refuses requests without it: exit 1, not retried). In a pipeline it comes
@@ -272,9 +275,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="labctl", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="submit (or find) a job and wait for it")
-    r.add_argument("--capability", required=True)
-    r.add_argument("--queue", help="only this queue's devices may take the job (Nextflow's queue directive); "
-                                   "not part of the key")
+    r.add_argument("--capability", default=os.environ.get("NF_LAB_CAPABILITY") or None,
+                   help="what the job needs (default: NF_LAB_CAPABILITY, which the lab executor sets from the "
+                        "task's lab/capability hint)")
+    r.add_argument("--queue", default=os.environ.get("NF_LAB_QUEUE") or None,
+                   help="only this queue's devices may take the job (default: NF_LAB_QUEUE, which the lab "
+                        "executor sets from the task's queue directive); not part of the key")
     r.add_argument("--protocol", required=True)
     r.add_argument("--protocol-version", required=True)
     r.add_argument("--plate", required=True, help="plate ID from the plate map")
@@ -290,7 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--grace", type=float, default=env_float("NF_LAB_GRACE", 300.0),
                    help="seconds to absorb an unreachable adapter")
     r.add_argument("--outdir", default=".", help="where labctl.log, provenance.json and result.json go")
-    r.add_argument("--session", help="the Nextflow session (${workflow.sessionId}); the ledger keeps it per job")
+    r.add_argument("--session", default=os.environ.get("NF_LAB_SESSION") or None,
+                   help="the Nextflow session (default: NF_LAB_SESSION, which the lab executor sets); "
+                        "the ledger keeps it per job")
     r.set_defaults(func=run)
     rp = sub.add_parser("report", help="every job a Nextflow session submitted or collected, failures too")
     rp.add_argument("--session", required=True, help="the Nextflow session (${workflow.sessionId})")
@@ -301,6 +309,9 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--outdir", default=".", help="where lab_report.json and lab_report.tsv go")
     rp.set_defaults(func=report)
     args = p.parse_args(argv)
+    if args.cmd == "run" and not args.capability:
+        p.error("run: no capability: pass --capability, or run it as a task of the lab executor "
+                "(which sets NF_LAB_CAPABILITY from the task's lab/capability hint)")
     return args.func(args)
 
 

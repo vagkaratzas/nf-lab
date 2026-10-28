@@ -237,3 +237,30 @@ def test_params_that_are_not_an_object_of_scalars_are_refused_before_any_request
         code, _ = finish(labctl("http://127.0.0.1:9", "plate_spin", out=out, params=bad))
         log = (out / "labctl.log").read_text()
         assert code == 1 and "refused: --params" in log and "-> POST" not in log, (bad, log)
+
+
+def bare_labctl(url: str, out: Path, *extra: str, env: dict, key: str = "env") -> subprocess.Popen:
+    """labctl as a wet module runs it under the lab executor: no --capability, --queue or --session."""
+    cmd = [sys.executable, "-m", "nf_lab_adapter.labctl", "run", "--wait", "--protocol", "ok", "--protocol-version", "1.0",
+           "--plate", "P1", "--wells", "A1:S1", "--adapter", url, "--poll", "0.05", "--outdir", str(out), "--key", key, *extra]
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("NF_LAB_")}
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={**clean, **env})
+
+
+def test_capability_queue_and_session_come_from_the_lab_executors_env(tmp_path):
+    with serve(tmp_path) as (url, _):
+        workdir = tmp_path / "ab" / ("c" * 30)  # a Nextflow work dir: the ledger records the task with the session
+        code, job = finish(bare_labctl(url, workdir, env={"NF_LAB_CAPABILITY": "liquid-handling", "NF_LAB_SESSION": "s1"}))
+        assert code == 0 and (job["capability"], job["queue"]) == ("liquid-handling", None)
+        assert [j["job_id"] for j in Client(url, 0, 0).call("GET", "/jobs?session=s1")] == [job["job_id"]]
+
+        # a flag wins over the environment: no robot is in queue "elsewhere", so the submit is refused
+        code, _ = finish(bare_labctl(url, tmp_path / "b", "--queue", "elsewhere", key="flag",
+                                     env={"NF_LAB_CAPABILITY": "liquid-handling", "NF_LAB_QUEUE": ""}))
+        assert code == 1 and "refused: 404" in (tmp_path / "b" / "labctl.log").read_text()
+
+
+def test_no_capability_anywhere_is_a_usage_error(tmp_path):
+    p = bare_labctl("http://127.0.0.1:9", tmp_path / "o", env={})
+    _, err = p.communicate(timeout=10)
+    assert p.returncode == 2 and "no capability" in err
