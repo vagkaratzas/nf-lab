@@ -21,10 +21,153 @@ Two more calls come from a person (or the simulated operator), never from a job:
   person resolves a failed job as done after checking the deck.
 """
 
+import math
+import re
+import tomllib
 import zlib
+from dataclasses import dataclass
 from typing import Protocol
 
 from ..contract import Job, State, Well, WellType
+
+
+@dataclass(frozen=True)
+class Param:
+    """One protocol parameter: its type, the binding's default and the machine's limits."""
+
+    type: type  # float, int or str
+    default: float | int | str
+    min: float | None = None
+    max: float | None = None
+    choices: tuple[str, ...] | None = None
+
+
+# A string param must hold one character outside this class. Explicit, so Python's `re` and the
+# ECMAScript regex of JSON Schema (each module's input.schema.json `pattern`) read it the same.
+NONBLANK = r"[^\t\n\v\f\r ]"
+
+C = {"min": 4.0, "max": 99.0}  # a block temperature, °C
+S = {"min": 1, "max": 3600}  # a cycling step, seconds
+PCR_PARAMS = {
+    "lid_temperature": Param(float, 105.0, 30.0, 110.0),
+    "initial_denaturation_temperature": Param(float, 95.0, **C), "initial_denaturation_s": Param(int, 180, **S),
+    "cycles": Param(int, 30, 1, 60),
+    "denaturation_temperature": Param(float, 95.0, **C), "denaturation_s": Param(int, 15, **S),
+    "annealing_temperature": Param(float, 60.0, **C), "annealing_s": Param(int, 30, **S),
+    "extension_temperature": Param(float, 72.0, **C), "extension_s": Param(int, 30, **S),
+    "final_extension_temperature": Param(float, 72.0, **C), "final_extension_s": Param(int, 300, **S),
+    "hold_temperature": Param(float, 4.0, **C),
+    "volume_ul": Param(float, 25.0, 1.0, 100.0),
+}
+
+# Each protocol's parameters: what its module's input.schema.json lists, with the binding's defaults
+# and the simulated machines' limits. The maxima are chosen so any combination fits the simulated deck
+# (a split draws 2 x volume_ul from a 300 µL source well; an eluate goes into a 200 µL PCR well).
+# A lab narrows them, fixes values or sets its own defaults in its limits file (`load_limits`).
+# shortcut: one spec for both bindings, since both simulate the same machines; a binding for other
+# machines (SiLA 2) brings its own when one is written.
+PARAMS: dict[str, dict[str, Param]] = {
+    "plate_transfer": {"volume_ul": Param(float, 150.0, 1.0, 300.0)},
+    "plate_split": {"volume_ul": Param(float, 100.0, 1.0, 150.0)},  # into each aliquot
+    **{p: {"lysis_ul": Param(float, 50.0, 1.0, 60.0), "eluate_ul": Param(float, 100.0, 1.0, 200.0)}
+       for p in ("rna_extraction", "dna_extraction")},
+    "plate_read": {"wavelength_nm": Param(int, 450, 230, 1000)},
+    "pcr": PCR_PARAMS,
+    "qpcr": {**PCR_PARAMS, "cycles": Param(int, 40, 1, 60), "initial_denaturation_s": Param(int, 120, **S),
+             "final_extension_s": Param(int, 60, **S), "volume_ul": Param(float, 20.0, 1.0, 100.0),
+             "reverse_transcription_temperature": Param(float, 50.0, **C), "reverse_transcription_s": Param(int, 600, **S),
+             "channel": Param(str, "FAM", choices=("FAM", "HEX", "ROX", "Cy5"))},
+    "plate_mix": {"speed_rpm": Param(int, 1000, 100, 3000), "duration_s": Param(int, 60, 1, 3600)},
+    "plate_lysis": {"temperature": Param(float, 56.0, 20.0, 95.0), "speed_rpm": Param(int, 1200, 100, 2000),
+                    "duration_s": Param(int, 600, 1, 7200)},
+    "heat_inactivation": {"temperature": Param(float, 65.0, **C), "duration_s": Param(int, 1200, 1, 7200)},
+    "plate_tilt": {"angle_deg": Param(float, 10.0, 0.0, 20.0), "duration_s": Param(int, 120, 1, 3600)},
+    "plate_spin": {"g": Param(float, 1000.0, 10.0, 4000.0), "duration_s": Param(int, 300, 1, 3600)},
+    "plate_incubate": {"temperature": Param(float, 37.0, 4.0, 50.0), "duration_s": Param(int, 3600, 1, 604800)},
+    "plate_seal": {"temperature": Param(int, 165, 100, 200), "duration_s": Param(float, 1.5, 0.5, 10.0)},
+    "plate_unseal": {"adhere_time_s": Param(float, 2.5, 0.5, 10.0)},
+    "reagent_dispense": {"reagent": Param(str, "wash buffer"), "volume_ul": Param(float, 50.0, 1.0, 300.0)},
+    "powder_dispense": {"powder": Param(str, "NaCl"), "amount_mg": Param(float, 5.0, 0.1, 100.0)},
+    "plate_weigh": {},
+    "plate_scan": {},
+}
+LIMIT_KEYS = {"min", "max", "choices", "default", "fixed"}
+
+
+def _value(where: str, p: Param, value, rule: dict | None = None):
+    """`value` as `p` takes it, within the machine's limits and the lab's `rule`; ValueError if not."""
+    rule = rule or {}
+    if p.type is str:
+        if not isinstance(value, str) or not re.search(NONBLANK, value):
+            raise ValueError(f"{where} must be a non-blank string, got {value!r}")
+        if (choices := rule.get("choices") or p.choices) and value not in choices:
+            raise ValueError(f"{where} must be one of {', '.join(choices)}, got {value!r}")
+        return value
+    if isinstance(value, bool) or not isinstance(value, int if p.type is int else (int, float)):
+        raise ValueError(f"{where} must be {'an integer' if p.type is int else 'a number'}, got {value!r}")
+    if not math.isfinite(value):
+        raise ValueError(f"{where} must be finite, got {value!r}")
+    lo, hi = max(p.min, rule.get("min", p.min)), min(p.max, rule.get("max", p.max))
+    if not lo <= value <= hi:
+        raise ValueError(f"{where} must be within {lo}–{hi}, got {value!r}")
+    return p.type(value)
+
+
+def resolve(protocol: str, params: dict, limits: dict | None = None) -> dict:
+    """The program a job runs: the binding's defaults, then the lab's (`limits`, from `load_limits`),
+    then the params asked for. ValueError (the adapter's 422) for an unknown param, a wrong type,
+    a value out of the machine's or the lab's limits, or one other than the lab fixed."""
+    spec, lab = PARAMS.get(protocol, {}), (limits or {}).get(protocol, {})
+    if unknown := sorted(set(params) - set(spec)):
+        takes = f"it takes {', '.join(spec)}" if spec else "it takes none"
+        raise ValueError(f"{protocol} has no param {', '.join(unknown)}: {takes}")
+    program = {}
+    for name, p in spec.items():
+        rule = lab.get(name, {})
+        if name not in params:
+            program[name] = rule.get("fixed", rule.get("default", p.default))
+            continue
+        program[name] = _value(f"{protocol}.{name}", p, params[name], rule)
+        if "fixed" in rule and program[name] != rule["fixed"]:
+            raise ValueError(f"{protocol}.{name} is fixed at {rule['fixed']!r} by the lab, got {params[name]!r}")
+    return program
+
+
+def load_limits(path: str) -> dict:
+    """A lab's limits file (TOML; `NF_LAB_LIMITS`), per protocol and param: `min`, `max` (numbers),
+    `choices` (strings), `default`, `fixed` (any other value is refused). Every value must fit the
+    machine's limits. ValueError for anything else, so the adapter doesn't start on a bad file."""
+    with open(path, "rb") as f:
+        raw = tomllib.load(f)
+    limits: dict[str, dict[str, dict]] = {}
+    for protocol, rules in raw.items():
+        if protocol not in PARAMS or not isinstance(rules, dict):
+            raise ValueError(f"{path}: {protocol!r} isn't a protocol table ([{protocol}.<param>])")
+        for name, rule in rules.items():
+            where = f"{path}: {protocol}.{name}"
+            if name not in PARAMS[protocol] or not isinstance(rule, dict):
+                raise ValueError(f"{where}: {protocol} has no param {name!r} (it takes {', '.join(PARAMS[protocol]) or 'none'})")
+            if bad := sorted(set(rule) - LIMIT_KEYS):
+                raise ValueError(f"{where}: unknown key {', '.join(bad)} (allowed: {', '.join(sorted(LIMIT_KEYS))})")
+            p, out = PARAMS[protocol][name], {}
+            if p.type is str:
+                if {"min", "max"} & set(rule):
+                    raise ValueError(f"{where}: min and max are for numbers; a string takes choices")
+                if "choices" in rule:
+                    if not isinstance(rule["choices"], list) or not rule["choices"]:
+                        raise ValueError(f"{where}.choices must be a non-empty list")
+                    out["choices"] = tuple(_value(f"{where}.choices", p, c) for c in rule["choices"])
+            else:
+                if "choices" in rule:
+                    raise ValueError(f"{where}: choices are for strings; a number takes min and max")
+                out |= {k: _value(f"{where}.{k}", p, rule[k]) for k in ("min", "max") if k in rule}
+                if out.get("min", p.min) > out.get("max", p.max):
+                    raise ValueError(f"{where}: min {out['min']} is above max {out['max']}")
+            out |= {k: _value(f"{where}.{k}", p, rule[k], out) for k in ("default", "fixed") if k in rule}
+            if "default" in out and "fixed" in out and out["default"] != out["fixed"]:
+                raise ValueError(f"{where}: default and fixed differ; fixed is the default")
+            limits.setdefault(protocol, {})[name] = out
+    return limits
 
 ABSORBANCE_NM = 450
 

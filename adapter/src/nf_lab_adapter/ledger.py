@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from .contract import FINAL, CollectedJob, Collection, Job, SubmitRequest
+from .contract import FINAL, CollectedJob, Collection, Job, State, SubmitRequest
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     protocol_version TEXT NOT NULL,
     plate TEXT NOT NULL,
     wells TEXT NOT NULL,
+    params TEXT NOT NULL DEFAULT '{}',  -- as asked: part of the key
+    program TEXT,  -- as resolved at submit: defaults, the lab's limits, params
     state TEXT NOT NULL,
     stoppable INTEGER NOT NULL DEFAULT 1,
     stop_requested INTEGER NOT NULL DEFAULT 0,
@@ -67,11 +69,14 @@ CREATE TABLE IF NOT EXISTS collections (
     collected_at TEXT NOT NULL,
     PRIMARY KEY (job_id, task_hash)
 );
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 """
-VERSION = 5  # bump with any SCHEMA change
+VERSION = 6  # bump with any SCHEMA change
 
-PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells")
+PAYLOAD = ("capability", "protocol", "protocol_version", "plate", "wells", "params")
+
+
+RETRYABLE = {State.failed_preflight, State.voided}  # the key may get a new attempt
 
 
 class KeyConflict(Exception):
@@ -114,6 +119,8 @@ class Ledger:
             return None
         d = dict(row)
         d["wells"] = json.loads(d["wells"])
+        d["params"] = json.loads(d["params"])
+        d["program"] = json.loads(d["program"]) if d["program"] else None
         d["result"] = json.loads(d["result"]) if d["result"] else None
         return Job(**d)
 
@@ -130,13 +137,20 @@ class Ledger:
             ).fetchone()
         )
 
-    def submit(self, req: SubmitRequest) -> tuple[Job, bool]:
-        """Insert a job unless the key already has a live one. Returns (job, created)."""
-        with self.db:  # one transaction: the count, the check and the insert
+    def submit(self, req: SubmitRequest, resolve: Callable[[], dict] = dict) -> tuple[Job, bool]:
+        """Insert a job unless the key already has a live one. Returns (job, created).
+
+        `resolve()` gives the new attempt's program; it runs only when an attempt is created,
+        so a live job keeps the program it was queued with. A ValueError from it rolls back."""
+        with self.db:  # one transaction: the check, the count and the insert
             self.db.execute("BEGIN IMMEDIATE")
             earlier = self.lookup(req.idempotency_key)
             if earlier and earlier.model_dump(include=set(PAYLOAD)) != req.model_dump(include=set(PAYLOAD)):
                 raise KeyConflict(req.idempotency_key)
+            if earlier and earlier.state not in RETRYABLE:  # a live job holds this key
+                self._collect(earlier.job_id, req)
+                return earlier, False
+            program = resolve()
             attempts = self.db.execute(
                 "SELECT COUNT(*) FROM jobs WHERE idempotency_key = ?", (req.idempotency_key,)
             ).fetchone()[0]
@@ -144,10 +158,11 @@ class Ledger:
             try:
                 self.db.execute(
                     """INSERT INTO jobs (job_id, idempotency_key, attempt, capability, queue, protocol,
-                                         protocol_version, plate, wells, state, submitted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
+                                         protocol_version, plate, wells, params, program, state, submitted_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
                     (job_id, req.idempotency_key, attempts + 1, req.capability, req.queue, req.protocol,
-                     req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]), now()),
+                     req.protocol_version, req.plate, json.dumps([w.model_dump(mode="json") for w in req.wells]),
+                     json.dumps(req.params), json.dumps(program), now()),
                 )
             except sqlite3.IntegrityError:  # a live job already holds this key
                 self._collect(earlier.job_id, req)

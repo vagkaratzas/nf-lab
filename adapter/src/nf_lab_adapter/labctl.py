@@ -48,6 +48,7 @@ Stdlib only (Python >= 3.10), so it runs wherever the task runs.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -95,9 +96,30 @@ def well(token: str) -> dict:
             "type": parts[2] if len(parts) == 3 else "sample"}
 
 
-def default_key(protocol: str, version: str, plate: str, wells: list[dict]) -> str:
-    # wells sorted by the caller (row, column): the order they're listed in carries no meaning
-    return hashlib.sha256(json.dumps([protocol, version, plate, wells]).encode()).hexdigest()
+def default_key(protocol: str, version: str, plate: str, wells: list[dict], params: dict | None = None) -> str:
+    # wells sorted by the caller (row, column): the order they're listed in carries no meaning.
+    # No params: the key as before params existed. Params by name: their order carries none either.
+    payload = [protocol, version, plate, wells] + ([dict(sorted(params.items()))] if params else [])
+    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()
+
+
+def no_constant(name: str):
+    raise ValueError(f"{name} isn't a number")
+
+
+def protocol_params(text: str) -> dict:
+    """`--params`: a JSON object of scalars (string, finite number, bool), or `null` for none.
+    A wet module passes its `task.ext.params` this way, through stdin (`--params -`)."""
+    try:
+        params = json.loads(text, parse_constant=no_constant)  # NaN, Infinity: refused
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"--params isn't JSON: {e}")
+    if params is None:
+        return {}
+    if not isinstance(params, dict) or not all(
+            isinstance(v, (str, bool)) or isinstance(v, (int, float)) and math.isfinite(v) for v in params.values()):  # 1e400 is inf
+        raise argparse.ArgumentTypeError(f"--params must be a JSON object of strings, numbers or booleans, got {text.strip()}")
+    return params
 
 
 class Client:
@@ -161,7 +183,12 @@ def run(args: argparse.Namespace) -> int:
     outdir.mkdir(parents=True, exist_ok=True)
     _logfile = open(outdir / "labctl.log", "a")
     wells = sorted(args.wells, key=lambda w: (w["row"], w["column"]))
-    key = args.key or default_key(args.protocol, args.protocol_version, args.plate, wells)
+    try:
+        params = protocol_params(sys.stdin.read() if args.params == "-" else args.params) if args.params else {}
+    except argparse.ArgumentTypeError as e:
+        log(f"refused: {e}")  # before any request: nothing queued
+        return 1
+    key = args.key or default_key(args.protocol, args.protocol_version, args.plate, wells, params)
     client = Client(args.adapter, args.grace, args.poll)
     job: dict | None = None
 
@@ -182,7 +209,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         job = client.call("POST", "/jobs", {
             "capability": args.capability, "queue": args.queue, "protocol": args.protocol,
-            "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells,
+            "protocol_version": args.protocol_version, "plate": args.plate, "wells": wells, "params": params,
             "idempotency_key": key, "task_hash": task_hash(outdir.resolve()), "session_id": args.session,
         })
         pool = args.capability + (f" pool, queue {args.queue}" if args.queue else " pool")
@@ -253,7 +280,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--plate", required=True, help="plate ID from the plate map")
     r.add_argument("--wells", nargs="+", required=True, type=well, metavar="WELL:SAMPLE[:TYPE]",
                    help="the plate's filled wells, e.g. A1:S01 D2:NC1:negative_control H12:BLK1:blank")
-    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate and wells)")
+    r.add_argument("--params", metavar="JSON",
+                   help='the protocol\'s parameters as a JSON object, e.g. \'{"g": 500}\', or - to read it from stdin; '
+                        'part of the key. The adapter refuses unknown or out-of-range ones')
+    r.add_argument("--key", help="idempotency key (default: sha256 of protocol, version, plate, wells and params)")
     r.add_argument("--wait", action="store_true", help="poll until the job ends; exit with its code")
     r.add_argument("--adapter", default=os.environ.get("NF_LAB_ADAPTER", "http://127.0.0.1:8000"))
     r.add_argument("--poll", type=float, default=env_float("NF_LAB_POLL", 2.0), help="seconds between status polls")

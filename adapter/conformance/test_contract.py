@@ -57,6 +57,8 @@ def test_bad_requests_and_unknown_ids_are_refused(api, opts):
                   [{**a1, "type": "standard"}], []]:
         assert api("submit", new_request(opts, wells=wells)).status == 422, wells
     assert api("submit", new_request(opts, task_hash="not-a-task-hash")).status == 422
+    assert api("submit", new_request(opts, params={"conformance_no_such_param": 1})).status == 422  # never ignored
+    assert api("submit", new_request(opts, params={"g": [1]})).status == 422  # params are scalars
     assert api("submit", new_request(opts, capability="no-such-capability")).status == 404
     unknown = uuid.uuid4().hex
     assert api("status", job_id=unknown).status == 404

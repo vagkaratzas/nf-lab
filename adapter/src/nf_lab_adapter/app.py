@@ -30,7 +30,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
-from .bindings import Backend, DeviceStopped
+from .bindings import Backend, DeviceStopped, load_limits
+from .bindings import resolve as resolve_params
 from .bindings.fake import FakeBackend
 from .contract import FINAL, CollectedJob, Job, JobSpec, State, SubmitRequest
 from .ledger import KeyConflict, Ledger, now
@@ -307,8 +308,9 @@ class Adapter:
 bearer = HTTPBearer(auto_error=False, description="The adapter's token (NF_LAB_TOKEN); required when the adapter sets one")
 
 
-def create_app(ledger_path: str, devices: list[Device], token: str | None = None) -> FastAPI:
-    """token: every request must carry `Authorization: Bearer <token>`; None: no check (lab network only)."""
+def create_app(ledger_path: str, devices: list[Device], token: str | None = None, limits: dict | None = None) -> FastAPI:
+    """token: every request must carry `Authorization: Bearer <token>`; None: no check (lab network only).
+    limits: the lab's protocol-parameter limits (`bindings.load_limits`); None: the machines' own."""
     ledger = Ledger(ledger_path)
     adapter = Adapter(ledger, devices)
 
@@ -373,6 +375,8 @@ def create_app(ledger_path: str, devices: list[Device], token: str | None = None
             200: {"model": Job, "description": "Key already in the ledger: the existing job, nothing new runs"},
             404: {"description": "No device offers this capability"},
             409: {"description": "Key already used with a different payload"},
+            422: {"description": "A param is unknown, of the wrong type, out of range or other than the lab fixed; "
+                                 "nothing was queued"},
         },
     )
     async def submit(req: SubmitRequest, response: Response) -> Job:
@@ -381,9 +385,11 @@ def create_app(ledger_path: str, devices: list[Device], token: str | None = None
             where = f" in queue {req.queue!r}" if req.queue else ""
             raise HTTPException(404, f"no {req.capability!r} device{where} runs protocol {req.protocol!r}")
         try:
-            job, created = ledger.submit(req)
+            job, created = ledger.submit(req, resolve=lambda: resolve_params(req.protocol, req.params, limits))
         except KeyConflict:
             raise HTTPException(409, f"idempotency key {req.idempotency_key} already used with a different payload")
+        except ValueError as e:
+            raise HTTPException(422, str(e))
         if created:
             adapter.wake_pool(req.capability)
         else:
@@ -511,11 +517,15 @@ def main() -> FastAPI:
     NF_LAB_SIMULATED_OPERATOR=1 or 0: default 1 for fake (tests, CI), 0 for plr,
     so a person loads and unloads plates on the deck page.
     NF_LAB_TOKEN: every request must carry it as a bearer token; unset: no check.
+    NF_LAB_LIMITS: the lab's limits file (TOML) for protocol parameters; unset: the machines' own limits.
     """
     step = float(os.environ.get("NF_LAB_STEP", "1.0"))
     plr = os.environ.get("NF_LAB_BACKEND", "fake") == "plr"
     if plr:
-        from .bindings.plr import MACHINES, PlrLiquidHandlerBackend  # imported only when used: PyLabRobot is heavy
+        from .bindings.plr import (  # imported only when used: PyLabRobot is heavy
+            MACHINES,
+            PlrLiquidHandlerBackend,
+        )
         prefix = "plr-sim"
         def backend(capability: str) -> Backend:
             binding = MACHINES.get(capability, PlrLiquidHandlerBackend)
@@ -529,6 +539,7 @@ def main() -> FastAPI:
                 simulated_operator=os.environ.get("NF_LAB_SIMULATED_OPERATOR", "0" if plr else "1") == "1")
          for device_id, capability, queue in device_specs(os.environ.get("NF_LAB_DEVICES", "1"), prefix)],
         token=os.environ.get("NF_LAB_TOKEN") or None,
+        limits=load_limits(path) if (path := os.environ.get("NF_LAB_LIMITS")) else None,
     )
 
 
