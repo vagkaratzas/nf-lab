@@ -141,12 +141,14 @@ process PLATE_TRANSFER {
     ...
     script:
     """
-    labctl run --wait --session ${workflow.sessionId} --capability ${task.hints['lab/capability']} --protocol plate_transfer ...
+    labctl run --wait \\
+        --protocol plate_transfer \\
+        ...
     """
 }
 ```
 
-Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session from `--session`.
+The lab executor hands each wet task's `labctl` its capability (the `lab/capability` hint), its queue (the `queue` directive) and the run's session, as `NF_LAB_CAPABILITY`, `NF_LAB_QUEUE` and `NF_LAB_SESSION` in the task's environment, so a module names them once, as directives. They're per task and replace whatever the launch shell holds; a flag (`--capability`, `--queue`, `--session`) still wins, for `labctl` by hand. Each submit also tells the ledger which Nextflow task collects the job: its task hash (read from the work dir, and also its lineage id) and the session.
 
 In `nextflow.config`, wet processes use the `lab` executor and retry only what is safe to retry:
 

@@ -28,8 +28,6 @@ process DNA_EXTRACTION {
     def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
-        --session ${workflow.sessionId} \\
-        --capability ${task.hints['lab/capability']} ${task.queue ? "--queue ${task.queue}" : ''} \\
         --protocol dna_extraction \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
