@@ -16,101 +16,78 @@
     "program": {
       "type": "object",
       "required": [
-        "lid",
-        "initial_denaturation",
+        "lid_temperature",
+        "initial_denaturation_temperature",
+        "initial_denaturation_s",
         "cycles",
-        "denaturation",
-        "annealing",
-        "extension",
-        "final_extension",
-        "hold",
+        "denaturation_temperature",
+        "denaturation_s",
+        "annealing_temperature",
+        "annealing_s",
+        "extension_temperature",
+        "extension_s",
+        "final_extension_temperature",
+        "final_extension_s",
+        "hold_temperature",
         "volume_ul"
       ],
       "properties": {
-        "lid": {
-          "type": "number"
+        "lid_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "initial_denaturation_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "initial_denaturation_s": {
+          "type": "integer",
+          "description": "seconds"
         },
         "cycles": {
-          "type": "integer",
-          "minimum": 1
+          "type": "integer"
         },
-        "hold": {
-          "type": "number"
+        "denaturation_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "denaturation_s": {
+          "type": "integer",
+          "description": "seconds"
+        },
+        "annealing_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "annealing_s": {
+          "type": "integer",
+          "description": "seconds"
+        },
+        "extension_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "extension_s": {
+          "type": "integer",
+          "description": "seconds"
+        },
+        "final_extension_temperature": {
+          "type": "number",
+          "description": "°C"
+        },
+        "final_extension_s": {
+          "type": "integer",
+          "description": "seconds"
+        },
+        "hold_temperature": {
+          "type": "number",
+          "description": "°C"
         },
         "volume_ul": {
           "type": "number"
-        },
-        "initial_denaturation": {
-          "type": "array",
-          "prefixItems": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[°C, seconds]"
-        },
-        "denaturation": {
-          "type": "array",
-          "prefixItems": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[°C, seconds]"
-        },
-        "annealing": {
-          "type": "array",
-          "prefixItems": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[°C, seconds]"
-        },
-        "extension": {
-          "type": "array",
-          "prefixItems": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[°C, seconds]"
-        },
-        "final_extension": {
-          "type": "array",
-          "prefixItems": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "[°C, seconds]"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "wells": {
       "type": "array",

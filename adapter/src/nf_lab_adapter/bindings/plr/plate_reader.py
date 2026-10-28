@@ -5,13 +5,13 @@ import asyncio
 from pylabrobot.plate_reading import PlateReader, PlateReaderChatterboxBackend
 from pylabrobot.resources import cor_96_wellplate_360uL_Fb
 
-from .. import ABSORBANCE_NM, Progress, absorbance, reading
+from .. import Progress, absorbance, reading
 from ...contract import Job, State
 from ._base import PlrMachine
 
 
 class PlrPlateReaderBackend(PlrMachine):
-    """`plate_read`: read the absorbance of each plate-map well. A person's load puts a
+    """`plate_read`: read the absorbance of each plate-map well at the program's wavelength. A person's load puts a
     plate in the reader, an unload takes it out. Reading moves no liquid, so the job
     never crosses the stop boundary: a failed or safe-stopped read can run again
     (an e-stopped one after a person's Failed)."""
@@ -47,7 +47,7 @@ class PlrPlateReaderBackend(PlrMachine):
         await asyncio.sleep(self.step)
         progress()
         data = (await self.reader.read_absorbance(
-            ABSORBANCE_NM, wells=plate.get_items([f"{w.row}{w.column}" for w in job.wells]),
+            job.program["wavelength_nm"], wells=plate.get_items([f"{w.row}{w.column}" for w in job.wells]),
             use_new_return_type=True))[0]["data"]
         await asyncio.sleep(self.step)
         await self.reader.open()

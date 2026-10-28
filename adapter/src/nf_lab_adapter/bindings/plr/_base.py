@@ -6,7 +6,7 @@ from pylabrobot.machines import Machine
 from pylabrobot.resources import Resource, cor_96_wellplate_360uL_Fb
 from pylabrobot.visualizer import Visualizer
 
-from .. import PROGRAMS, RESULTS, Progress
+from .. import RESULTS, Progress
 from ...contract import Job, State
 
 ROWS = "ABCDEFGHIJKLMNOP"
@@ -52,7 +52,7 @@ class PlrMachine:
 
 
 class PlrPlateHolder(PlrMachine):
-    """A machine that holds one plate and puts it through a program (`PROGRAMS`): a shaker, a
+    """A machine that holds one plate and puts it through the job's program (`job.program`): a shaker, a
     heat block. A person's load puts a 96-well plate on it, an unload takes it off. The program
     changes the samples, so the job crosses the stop boundary as it starts: a safe stop before
     that leaves the plate as it was loaded. Subclasses write `make()` and `treat()`, and
@@ -104,6 +104,6 @@ class PlrPlateHolder(PlrMachine):
         progress(state=State.running)
         await self.ready(job, progress)
         progress(stoppable=False)  # the program starts: the samples are changed from here on
-        await self.treat(PROGRAMS[job.protocol], progress)
+        await self.treat(job.program, progress)
         progress()
         return await self.read_result(job)

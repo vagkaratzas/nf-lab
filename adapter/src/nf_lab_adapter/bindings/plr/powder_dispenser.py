@@ -6,13 +6,13 @@ from pylabrobot.powder_dispensing import PowderDispenser
 from pylabrobot.powder_dispensing.chatterbox import PowderDispenserChatterboxBackend
 from pylabrobot.resources import Powder, cor_96_wellplate_360uL_Fb
 
-from .. import POWDER, Progress, powdered
+from .. import Progress, powdered
 from ...contract import Job, State
 from ._base import PlrMachine
 
 
 class PlrPowderDispenserBackend(PlrMachine):
-    """`powder_dispense`: dose a powder (`POWDER`) into each plate-map well; the result holds the
+    """`powder_dispense`: dose the program's powder and amount into each plate-map well; the result holds the
     amount the dispenser reports per well. A person's load puts the plate on its deck. The
     first dose changes the plate: the stop boundary."""
 
@@ -42,7 +42,7 @@ class PlrPowderDispenserBackend(PlrMachine):
         progress(stoppable=False)  # the first dose: powder goes into the plate from here on
         doses = await self.dispenser.dispense(
             self.plate.get_items([f"{w.row}{w.column}" for w in job.wells]),
-            [Powder(POWDER["powder"])] * len(job.wells), [POWDER["amount_mg"]] * len(job.wells))
+            [Powder(job.program["powder"])] * len(job.wells), [job.program["amount_mg"]] * len(job.wells))
         await asyncio.sleep(self.step)
         progress()
         return {**powdered(job), "wells": [{**w.model_dump(mode="json"), "amount_mg": d["actual_amount"]}

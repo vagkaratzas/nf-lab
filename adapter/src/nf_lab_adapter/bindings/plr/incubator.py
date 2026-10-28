@@ -7,9 +7,22 @@ from pylabrobot.resources import Coordinate, Resource
 from pylabrobot.storage import Incubator, IncubatorChatterboxBackend
 from pylabrobot.storage.cytomat.racks import cytomat_rack_17mm_28
 
-from .. import PROGRAMS, Progress
+from .. import Progress
 from ...contract import Job
 from ._base import PlrPlateHolder
+
+
+class SimulatedIncubatorBackend(IncubatorChatterboxBackend):
+    """The chatterbox, keeping the temperature it was set to: PyLabRobot 0.2.2's always reports 37.0."""
+
+    temperature = 37.0
+
+    async def set_temperature(self, temperature: float):
+        await super().set_temperature(temperature)
+        self.temperature = temperature
+
+    async def get_temperature(self) -> float:
+        return self.temperature
 
 
 class PlrIncubatorBackend(PlrPlateHolder):
@@ -23,7 +36,7 @@ class PlrIncubatorBackend(PlrPlateHolder):
     TOLERANCE = 0.5  # °C
 
     def make(self) -> Incubator:
-        return Incubator(IncubatorChatterboxBackend(), "incubator", size_x=600, size_y=600, size_z=600,
+        return Incubator(SimulatedIncubatorBackend(), "incubator", size_x=600, size_y=600, size_z=600,
                          racks=[cytomat_rack_17mm_28("rack")], loading_tray_location=Coordinate.zero())
 
     @property
@@ -36,7 +49,7 @@ class PlrIncubatorBackend(PlrPlateHolder):
         await super().load(plate)
 
     async def ready(self, job: Job, progress: Progress) -> None:
-        target = PROGRAMS[job.protocol]["temperature"]
+        target = job.program["temperature"]
         await self.machine.set_temperature(target)
         # PyLabRobot 0.2.2's Incubator has no wait_for_temperature: poll it.
         for _ in range(self.WARMUP):

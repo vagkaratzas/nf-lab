@@ -15,7 +15,7 @@ from pylabrobot.resources import (
     hamilton_96_tiprack_1000uL_filter,
 )
 
-from .. import ELUATE_UL, EXTRACTIONS, LYSIS_UL, SPLIT_UL, Progress, aliquots, extracted
+from .. import EXTRACTIONS, Progress, aliquots, extracted
 from ...contract import Job, State, WellType
 from ._base import PlrMachine
 
@@ -28,21 +28,20 @@ class PlrLiquidHandlerBackend(PlrMachine):
     empty plates and an empty PCR plate (200 µL wells) for eluates. One column at a time, one channel per well; wells not in the
     plate map are never touched.
 
-    - `plate_transfer`: fill each plate-map well of the destination plate with
-      `volume_ul` from the same well of its source: the sample plate for samples,
+    - `plate_transfer`: fill each plate-map well of the destination plate with the
+      program's `volume_ul` from the same well of its source: the sample plate for samples,
       the buffer plate for controls and blanks.
-    - `plate_split`: the same, `SPLIT_UL` into each of two aliquot plates (the
+    - `plate_split`: the same, `volume_ul` into each of two aliquot plates (the
       destination and the second plate), from one aspirate.
     - `rna_extraction`, `dna_extraction`: the plate is an aliquot, controls and blanks
-      included, so every plate-map well is on the sample plate. Add `LYSIS_UL` of
-      lysis buffer (from the buffer plate) to each, then move `ELUATE_UL` of the lysate
+      included, so every plate-map well is on the sample plate. Add `lysis_ul` of
+      lysis buffer (from the buffer plate) to each, then move `eluate_ul` of the lysate
       to the PCR plate, ready for the thermocycler. The yield is simulated (`concentration`)."""
 
     PROTOCOLS = {"plate_transfer", "plate_split", *EXTRACTIONS}
 
-    def __init__(self, step: float = 0.5, volume_ul: float = 150.0, visualize: bool = False):
+    def __init__(self, step: float = 0.5, visualize: bool = False):
         super().__init__(step, visualize)
-        self.volume_ul = volume_ul
         self.lh: LiquidHandler | None = None  # set up when the adapter starts
 
     async def _op(self, progress: Progress, coro) -> None:
@@ -90,7 +89,8 @@ class PlrLiquidHandlerBackend(PlrMachine):
         # pre-flight: everything checkable before material is touched
         self._check(job, dst)
         ids = [f"{w.row}{w.column}" for w in job.wells]
-        drawn = {"plate_transfer": self.volume_ul, "plate_split": 2 * SPLIT_UL}.get(job.protocol, ELUATE_UL)
+        p = job.program
+        drawn = p["eluate_ul"] if job.protocol in EXTRACTIONS else p["volume_ul"] * (2 if job.protocol == "plate_split" else 1)
         if drawn > SAMPLE_UL:
             raise ValueError(f"{drawn} µL asked, source wells hold {SAMPLE_UL} µL")
         progress(state=State.running)
@@ -106,17 +106,17 @@ class PlrLiquidHandlerBackend(PlrMachine):
             await self._op(progress, lh.pick_up_tips(tips.get_items(batch)))
             progress(stoppable=False)  # first aspirate: material is now touched
             if job.protocol == "plate_transfer":
-                await self._op(progress, lh.aspirate(source.get_items(batch), vols=vols(self.volume_ul)))
-                await self._op(progress, lh.dispense(dst.get_items(batch), vols=vols(self.volume_ul)))
+                await self._op(progress, lh.aspirate(source.get_items(batch), vols=vols(p["volume_ul"])))
+                await self._op(progress, lh.dispense(dst.get_items(batch), vols=vols(p["volume_ul"])))
             elif job.protocol == "plate_split":
-                await self._op(progress, lh.aspirate(source.get_items(batch), vols=vols(2 * SPLIT_UL)))
-                await self._op(progress, lh.dispense(dst.get_items(batch), vols=vols(SPLIT_UL)))
-                await self._op(progress, lh.dispense(dst2.get_items(batch), vols=vols(SPLIT_UL)))
+                await self._op(progress, lh.aspirate(source.get_items(batch), vols=vols(2 * p["volume_ul"])))
+                await self._op(progress, lh.dispense(dst.get_items(batch), vols=vols(p["volume_ul"])))
+                await self._op(progress, lh.dispense(dst2.get_items(batch), vols=vols(p["volume_ul"])))
             else:  # extraction: lysis, then the lysate to the PCR plate (one tip per well: same sample)
-                await self._op(progress, lh.aspirate(buf.get_items(batch), vols=vols(LYSIS_UL)))
-                await self._op(progress, lh.dispense(src.get_items(batch), vols=vols(LYSIS_UL)))
-                await self._op(progress, lh.aspirate(src.get_items(batch), vols=vols(ELUATE_UL)))
-                await self._op(progress, lh.dispense(eluate.get_items(batch), vols=vols(ELUATE_UL)))
+                await self._op(progress, lh.aspirate(buf.get_items(batch), vols=vols(p["lysis_ul"])))
+                await self._op(progress, lh.dispense(src.get_items(batch), vols=vols(p["lysis_ul"])))
+                await self._op(progress, lh.aspirate(src.get_items(batch), vols=vols(p["eluate_ul"])))
+                await self._op(progress, lh.dispense(eluate.get_items(batch), vols=vols(p["eluate_ul"])))
             await self._op(progress, lh.drop_tips(tips.get_items(batch)))
 
         return await self.read_result(job)

@@ -34,6 +34,7 @@ def test_params_override_the_defaults_and_the_job_keeps_both(tmp_path):
         assert job["state"] == "done"
         assert job["params"] == {"g": 500}
         assert job["program"] == {"g": 500.0, "duration_s": 300}  # an int for a float param: coerced
+        assert job["result"]["program"] == job["program"]  # the fake binding ran it too
         plain = wait(c, c.post("/jobs", json=spin("plain")).json()["job_id"])
         assert plain["params"] == {} and plain["program"] == {"g": 1000.0, "duration_s": 300}
 

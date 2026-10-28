@@ -6,13 +6,13 @@ from pylabrobot.pumps import PumpArray, PumpCalibration
 from pylabrobot.pumps.chatterbox import PumpArrayChatterboxBackend
 from pylabrobot.resources import cor_96_wellplate_360uL_Fb
 
-from .. import DISPENSE, RESULTS, Progress
+from .. import RESULTS, Progress
 from ...contract import Job, State
 from ._base import PlrMachine
 
 
 class PlrPumpBackend(PlrMachine):
-    """`reagent_dispense`: pump a bulk reagent (`DISPENSE`) into each plate-map well. The 8 channels
+    """`reagent_dispense`: pump the program's reagent and volume into each plate-map well. The 8 channels
     feed rows A–H; the manifold steps column by column, one pump per column. A person's load
     puts the plate under the manifold. The first pump changes the plate: the stop boundary."""
 
@@ -42,7 +42,7 @@ class PlrPumpBackend(PlrMachine):
         progress(state=State.running)
         await asyncio.sleep(self.step)  # prime the lines
         progress(stoppable=False)  # the first pump: reagent goes into the plate from here on
-        volume = DISPENSE["volume_ul"]
+        volume = job.program["volume_ul"]
         for column in sorted({w.column for w in job.wells}):
             batch = [w for w in job.wells if w.column == column]
             await self.pumps.pump_volume(self.SPEED, use_channels=[rows.index(w.row) for w in batch], volume=volume)

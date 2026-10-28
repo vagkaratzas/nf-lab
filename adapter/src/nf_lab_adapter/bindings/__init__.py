@@ -169,8 +169,6 @@ def load_limits(path: str) -> dict:
             limits.setdefault(protocol, {})[name] = out
     return limits
 
-ABSORBANCE_NM = 450
-
 
 def absorbance(well: Well) -> float:
     """A simulated reading: controls and blanks near background, each sample its own value
@@ -181,20 +179,18 @@ def absorbance(well: Well) -> float:
 
 
 def reading(job: Job) -> dict:
-    """`plate_read`'s outputs: the absorbance of each plate-map well."""
-    return {"plate": job.plate, "wavelength_nm": ABSORBANCE_NM,
+    """`plate_read`'s outputs: the absorbance of each plate-map well, at the program's wavelength."""
+    return {"plate": job.plate, "wavelength_nm": job.program["wavelength_nm"],
             "wells": [{**w.model_dump(mode="json"), "absorbance": absorbance(w)} for w in job.wells]}
 
 
-SPLIT_UL = 100.0  # `plate_split`: what each aliquot well gets
-LYSIS_UL = 50.0  # extraction: lysis buffer added to each well
-ELUATE_UL = 100.0  # extraction: lysate moved to the eluate (PCR) plate
 EXTRACTIONS = {"rna_extraction": "RNA", "dna_extraction": "DNA"}  # protocol -> analyte
 
 
-def aliquots(job: Job, volume=lambda aliquot, well: SPLIT_UL) -> dict:
+def aliquots(job: Job, volume=None) -> dict:
     """`plate_split`'s outputs: two aliquot plates, each plate-map well in both. The
-    pipeline names them; `volume(aliquot, well)` is what the well holds."""
+    pipeline names them; `volume(aliquot, well)` is what the well holds (default: the program's)."""
+    volume = volume or (lambda aliquot, well: job.program["volume_ul"])
     return {"plate": job.plate, "aliquots": [
         {"aliquot": i, "wells": [{**w.model_dump(mode="json"), "volume_ul": volume(i, w)} for w in job.wells]}
         for i in (1, 2)]}
@@ -210,30 +206,21 @@ def concentration(well: Well, analyte: str) -> float:
     return round(5 + zlib.crc32(f"{well.sample}:{analyte}".encode()) % 9500 / 100, 1)
 
 
-def extracted(job: Job, eluate=lambda well: ELUATE_UL) -> dict:
-    """`rna_extraction`/`dna_extraction`'s outputs: each plate-map well's eluate and its yield."""
+def extracted(job: Job, eluate=None) -> dict:
+    """`rna_extraction`/`dna_extraction`'s outputs: each plate-map well's eluate (default: the
+    program's `eluate_ul`) and its yield."""
+    eluate = eluate or (lambda well: job.program["eluate_ul"])
     analyte = EXTRACTIONS[job.protocol]
     return {"plate": job.plate, "analyte": analyte, "wells": [
         {**w.model_dump(mode="json"), "eluate_ul": eluate(w), "yield_ng_ul": concentration(w, analyte)}
         for w in job.wells]}
 
 
-# `pcr`'s one program (°C, seconds). shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
-PCR = {"lid": 105.0, "initial_denaturation": [95.0, 180], "cycles": 30, "denaturation": [95.0, 15],
-       "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 300], "hold": 4.0,
-       "volume_ul": 25.0}
-
-
 def amplified(job: Job) -> dict:
     """`pcr`'s outputs: the program the plate went through, and its plate-map wells."""
-    return {"plate": job.plate, "program": PCR, "wells": [w.model_dump(mode="json") for w in job.wells]}
+    return {"plate": job.plate, "program": job.program, "wells": [w.model_dump(mode="json") for w in job.wells]}
 
 
-# `qpcr`'s one program: one-step RT-qPCR (reverse transcription, then PCR), fluorescence read
-# each cycle at extension. shortcut: fixed until jobs carry protocol parameters (open question 12).
-QPCR = {"lid": 105.0, "reverse_transcription": [50.0, 600], "initial_denaturation": [95.0, 120], "cycles": 40,
-        "denaturation": [95.0, 15], "annealing": [60.0, 30], "extension": [72.0, 30], "final_extension": [72.0, 60],
-        "hold": 4.0, "volume_ul": 20.0, "channel": "FAM"}
 POSITIVE_CT = 25.0
 
 
@@ -251,44 +238,29 @@ def ct(well: Well) -> float | None:
 
 def quantified(job: Job) -> dict:
     """`qpcr`'s outputs: the program, and each plate-map well's Ct (null: undetermined)."""
-    return {"plate": job.plate, "program": QPCR, "wells": [{**w.model_dump(mode="json"), "ct": ct(w)} for w in job.wells]}
+    return {"plate": job.plate, "program": job.program, "wells": [{**w.model_dump(mode="json"), "ct": ct(w)} for w in job.wells]}
 
 
-# Each plate-holder protocol's one program (°C, rpm, degrees, seconds): the plate sits on the machine
-# and goes through it. shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
-PROGRAMS = {
-    "plate_mix": {"speed_rpm": 1000, "duration_s": 60},  # shaking: mix reagent into each well
-    "plate_lysis": {"temperature": 56.0, "speed_rpm": 1200, "duration_s": 600},  # heating-shaking: proteinase K lysis
-    "heat_inactivation": {"temperature": 65.0, "duration_s": 1200},  # temperature-control: kill an enzyme
-    "plate_tilt": {"angle_deg": 10.0, "duration_s": 120},  # tilting: pool each well's liquid to one side
-    "plate_spin": {"g": 1000.0, "duration_s": 300},  # centrifugation: pellet what's in each well
-    "plate_incubate": {"temperature": 37.0, "duration_s": 3600},  # incubation: grow or hold at 37 °C
-    "plate_seal": {"temperature": 165, "duration_s": 1.5},  # sealing: heat-seal a foil on
-    "plate_unseal": {"adhere_time_s": 2.5},  # peeling: peel the seal off
-}
+# The plate-holder protocols: the plate sits on the machine and goes through the program.
+HOLDERS = ("plate_mix", "plate_lysis", "heat_inactivation", "plate_tilt", "plate_spin", "plate_incubate",
+           "plate_seal", "plate_unseal")
 
 
 def treated(job: Job) -> dict:
     """A plate-holder protocol's outputs: the program the plate went through, and its plate-map wells."""
-    return {"plate": job.plate, "program": PROGRAMS[job.protocol], "wells": [w.model_dump(mode="json") for w in job.wells]}
-
-
-# `reagent_dispense`, `powder_dispense`: what goes into each plate-map well.
-# shortcut: fixed until jobs carry protocol parameters (open question 12).
-DISPENSE = {"reagent": "wash buffer", "volume_ul": 50.0}
-POWDER = {"powder": "NaCl", "amount_mg": 5.0}
+    return {"plate": job.plate, "program": job.program, "wells": [w.model_dump(mode="json") for w in job.wells]}
 
 
 def dispensed(job: Job) -> dict:
     """`reagent_dispense`'s outputs: the reagent, and the volume each plate-map well got."""
-    return {"plate": job.plate, "reagent": DISPENSE["reagent"],
-            "wells": [{**w.model_dump(mode="json"), "volume_ul": DISPENSE["volume_ul"]} for w in job.wells]}
+    return {"plate": job.plate, "reagent": job.program["reagent"],
+            "wells": [{**w.model_dump(mode="json"), "volume_ul": job.program["volume_ul"]} for w in job.wells]}
 
 
 def powdered(job: Job) -> dict:
     """`powder_dispense`'s outputs: the powder, and the amount each plate-map well got."""
-    return {"plate": job.plate, "powder": POWDER["powder"],
-            "wells": [{**w.model_dump(mode="json"), "amount_mg": POWDER["amount_mg"]} for w in job.wells]}
+    return {"plate": job.plate, "powder": job.program["powder"],
+            "wells": [{**w.model_dump(mode="json"), "amount_mg": job.program["amount_mg"]} for w in job.wells]}
 
 
 PLATE_TARE_G = 45.0  # an empty 96-well plate. shortcut: one plate type, until labware is in the job
@@ -309,7 +281,7 @@ def scanned(job: Job) -> dict:
 # Each protocol's simulated outputs, from the job alone: what the fake binding returns, and a
 # PyLabRobot binding's unless it reads them off its deck (liquid handling, the plate reader).
 RESULTS = {"plate_read": reading, "plate_split": aliquots, **dict.fromkeys(EXTRACTIONS, extracted),
-           "pcr": amplified, "qpcr": quantified, **dict.fromkeys(PROGRAMS, treated),
+           "pcr": amplified, "qpcr": quantified, **dict.fromkeys(HOLDERS, treated),
            "reagent_dispense": dispensed, "powder_dispense": powdered, "plate_weigh": weighed,
            "plate_scan": scanned}
 READ_ONLY = {"plate_read", "plate_weigh", "plate_scan"}  # protocols that change nothing: they never cross the stop boundary
