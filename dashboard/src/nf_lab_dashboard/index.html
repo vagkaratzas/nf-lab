@@ -156,7 +156,7 @@ function robots(data) {
       card.className = "robot"; card.id = `robot-${r.device_id}`; card.dataset.viewer = String(r.viewer);
       card.innerHTML = `<h3>${esc(r.device_id)}</h3><div class="info"></div>` +
         (r.viewer ? `<div class="viewer"><iframe src="${esc(r.viewer)}" title="${esc(r.device_id)} deck view"></iframe></div>`
-                  : `<p class="muted">No deck view (fake backend).</p>`);
+                  : `<p class="muted">No deck view: the fake backend, or a machine PyLabRobot doesn't draw.</p>`);
       body.appendChild(card);
     }
     const hb = r.heartbeat_s == null ? "" : ` · heartbeat ${r.heartbeat_s}s ago`;

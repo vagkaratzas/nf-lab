@@ -256,3 +256,40 @@ def test_scale_runs_the_plates_over_both_pools_with_the_simulated_operator(tmp_p
     assert len({d for p, d, _ in rows if p == "rna_extraction"}) == 4  # six plates queued at once: every liquid handler
     assert {d.split("-")[0] for p, d, _ in rows if p == "qpcr"} == {"qpcr"}
     assert not [e for e in demo.log if e["kind"] == "person"]  # the adapter moved the plates
+
+
+TOUR_STUB = """#!/usr/bin/env bash
+run() {{ "{labctl}" run --wait --poll 0.1 --outdir "$1$2" --capability "$3" --protocol "$1" --protocol-version 1.0 \\
+    --plate "$2" --wells A1:S1 > /dev/null 2>&1; }}
+pids=()
+(run plate_scan PCR01 barcode-reading && run plate_seal PCR01 sealing && run pcr PCR01 thermocycling) & pids+=($!)
+(run plate_mix CELL01 shaking && run plate_read CELL01 plate-reading) & pids+=($!)
+(run powder_dispense CMPD01 powder-dispensing && run plate_weigh CMPD01 weighing) & pids+=($!)
+rc=0; for pid in "${{pids[@]}}"; do wait "$pid" || rc=1; done; exit $rc
+"""
+
+
+def test_tour_runs_the_routines_over_one_robot_of_each_kind(tmp_path):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    stub = tmp_path / "nextflow"
+    stub.write_text(TOUR_STUB.format(labctl=NF_LAB / "adapter/.venv/bin/labctl"))
+    stub.chmod(0o755)
+    demo = Demo(Settings(nf_lab=NF_LAB, port=port, backend="fake", step=0.1, nextflow=[str(stub)], beat=0, tick=0.1,
+                         runs=tmp_path / "runs"))
+
+    async def go():
+        demo.start("tour", "lab_tour")
+        try:
+            await asyncio.wait_for(asyncio.shield(demo.task), 60)
+        finally:
+            await demo.shutdown()
+    asyncio.run(go())
+    assert demo.status == "finished", demo.log
+    rows = sqlite3.connect(demo.run_dir / "ledger.sqlite").execute("SELECT protocol, device_id, state FROM jobs").fetchall()
+    assert len(rows) == 7 and {s for *_, s in rows} == {"done"}
+    assert {d for _, d, _ in rows} == {"barcode-reading-1", "sealing-1", "thermocycling-1", "shaking-1", "plate-reading-1",
+                                       "powder-dispensing-1", "weighing-1"}
+    assert not [e for e in demo.log if e["kind"] == "person"]  # the adapter moved the plates
+    assert any("7 of 17 robots have worked" in e["text"] for e in demo.log)
