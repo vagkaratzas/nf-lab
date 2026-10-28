@@ -10,13 +10,11 @@ from jsonschema import Draft202012Validator
 
 from nf_lab_adapter.app import Device, create_app
 from nf_lab_adapter.bindings.fake import FakeBackend
-from nf_lab_adapter.bindings.plr import PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend
+from nf_lab_adapter.bindings.plr import MACHINES
 from test_adapter import req, wait, wells
 
 MODULES = Path(__file__).parents[2] / "wet-modules" / "modules"
 PROTOCOLS = sorted(p.name for p in MODULES.iterdir())
-BINDINGS = {"liquid-handling": PlrLiquidHandlerBackend, "plate-reading": PlrPlateReaderBackend,
-            "thermocycling": PlrThermocyclerBackend, "qpcr": PlrQpcrBackend}
 
 
 def meta(protocol: str) -> dict:
@@ -38,7 +36,7 @@ def test_meta_script_and_schema_agree(protocol):
 @pytest.mark.parametrize("binding", ["fake", "plr"])
 def test_a_binding_result_fits_the_schema(tmp_path, protocol, binding):
     capability = meta(protocol)["capability"]
-    backend = FakeBackend(0.0) if binding == "fake" else BINDINGS[capability](0.0)
+    backend = FakeBackend(0.0) if binding == "fake" else MACHINES[capability](0.0)
     schema = json.loads((MODULES / protocol / "result.schema.json").read_text())
     plate = wells("A1:S1", "B1:S2", "C1:NC1:negative_control", "D1:BLK1:blank", "E1:POS1:positive_control")
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("d-1", capability, backend, simulated_operator=True)])) as c:

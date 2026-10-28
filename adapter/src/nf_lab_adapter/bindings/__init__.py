@@ -111,6 +111,13 @@ def quantified(job: Job) -> dict:
     return {"plate": job.plate, "program": QPCR, "wells": [{**w.model_dump(mode="json"), "ct": ct(w)} for w in job.wells]}
 
 
+# Each protocol's simulated outputs, from the job alone: what the fake binding returns, and a
+# PyLabRobot binding's unless it reads them off its deck (liquid handling, the plate reader).
+RESULTS = {"plate_read": reading, "plate_split": aliquots, **dict.fromkeys(EXTRACTIONS, extracted),
+           "pcr": amplified, "qpcr": quantified}
+READ_ONLY = {"plate_read"}  # protocols that change nothing: they never cross the stop boundary
+
+
 class DeviceStopped(Exception):
     """A human stopped the device (e-stop, vendor UI)."""
 
