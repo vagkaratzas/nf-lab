@@ -3,6 +3,9 @@
     uv run pytest conformance --adapter http://lab-host:8000    # any adapter
     uv run pytest conformance                                   # this repo's: each binding and protocol in OWN
 
+Checks run in parallel (pytest-xdist, `-n auto` in pyproject.toml). Against real hardware, add
+`-n0` so one check at a time submits jobs to it.
+
 The kit calls only the contract's operations and validates every reply against the spec.
 Loading a plate is an operator action, outside the contract, so the adapter under test must
 load queued plates itself: here, the simulated operator (NF_LAB_SIMULATED_OPERATOR=1).
