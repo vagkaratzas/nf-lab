@@ -6,10 +6,12 @@ it up for that plate; an unload (`load(None)`) clears it. The labware carries no
 the adapter's ledger keeps which plate is on which machine.
 
 With `visualize=True`, PyLabRobot's browser view of a machine starts with the adapter
-(http://127.0.0.1:1337, or the next free port; the URL is logged).
+(http://127.0.0.1:1337, or the next free port; the URL is logged). The pump array and the
+powder dispenser have none: PyLabRobot doesn't model them as deck resources.
 
 Adding a capability: a module with a `PlrMachine` subclass (`PlrPlateHolder` for a machine that
-holds one plate through a program), and its row in `MACHINES`.
+holds one plate through a program), its row in `MACHINES`, its wet module, and its rows in
+the conformance kit (`conformance/conftest.py`) and `wet-modules/tests/run.sh`.
 """
 
 from pylabrobot.resources import set_volume_tracking

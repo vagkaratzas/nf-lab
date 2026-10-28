@@ -27,6 +27,15 @@ One module per protocol, named after it.
 | `plate_read` | plate-reading | `plate_read` | none (moves no liquid) |
 | `pcr` | thermocycling | `pcr` | start of cycling |
 | `qpcr` | qpcr | `qpcr` | start of cycling |
+| `plate_mix` | shaking | `plate_mix` | shaking starts |
+| `plate_lysis` | heating-shaking | `plate_lysis` | heating starts |
+| `heat_inactivation` | temperature-control | `heat_inactivation` | the block's temperature is set |
+| `plate_tilt` | tilting | `plate_tilt` | the tilt starts |
+| `plate_spin` | centrifugation | `plate_spin` | the spin starts |
+| `plate_incubate` | incubation | `plate_incubate` | the plate is taken in (incubator preheated in pre-flight) |
+| `reagent_dispense` | pumping | `reagent_dispense` | first pump |
+| `powder_dispense` | powder-dispensing | `powder_dispense` | first dose |
+| `plate_weigh` | weighing | `plate_weigh` | none (changes nothing) |
 
 | Subworkflow | What it does |
 |---|---|
