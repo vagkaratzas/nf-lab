@@ -36,6 +36,9 @@ One module per protocol, named after it.
 | `reagent_dispense` | pumping | `reagent_dispense` | first pump |
 | `powder_dispense` | powder-dispensing | `powder_dispense` | first dose |
 | `plate_weigh` | weighing | `plate_weigh` | none (changes nothing) |
+| `plate_seal` | sealing | `plate_seal` | the seal starts |
+| `plate_unseal` | peeling | `plate_unseal` | the peel starts |
+| `plate_scan` | barcode-reading | `plate_scan` | none (changes nothing; a barcode that isn't the job's plate fails it) |
 
 | Subworkflow | What it does |
 |---|---|
