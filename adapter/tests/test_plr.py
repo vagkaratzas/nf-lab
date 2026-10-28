@@ -188,7 +188,8 @@ def test_extraction_lyses_every_well_and_moves_the_eluate(tmp_path, protocol, an
 
 @pytest.mark.parametrize("capability, protocol", [("shaking", "plate_mix"), ("heating-shaking", "plate_lysis"),
                                                   ("temperature-control", "heat_inactivation"), ("tilting", "plate_tilt"),
-                                                  ("centrifugation", "plate_spin"), ("incubation", "plate_incubate")])
+                                                  ("centrifugation", "plate_spin"), ("incubation", "plate_incubate"),
+                                                  ("sealing", "plate_seal"), ("peeling", "plate_unseal")])
 def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_before_it_touches_nothing(
         tmp_path, capability, protocol):
     backend = MACHINES[capability](0.05)
@@ -231,7 +232,8 @@ def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_
 
 @pytest.mark.parametrize("capability, protocol, crosses", [("pumping", "reagent_dispense", True),
                                                            ("powder-dispensing", "powder_dispense", True),
-                                                           ("weighing", "plate_weigh", False)])
+                                                           ("weighing", "plate_weigh", False),
+                                                           ("barcode-reading", "plate_scan", False)])
 def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capability, protocol, crosses):
     backend = MACHINES[capability](0.05)
     plate = wells("A1:S1", "B1:NC1:negative_control", "C2:S2", "H12:BLK1:blank")  # three columns
@@ -253,5 +255,23 @@ def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capabil
             assert {w["volume_ul"] for w in result["wells"]} == {DISPENSE["volume_ul"]}
         elif protocol == "powder_dispense":
             assert result["powder"] == POWDER["powder"] and {w["amount_mg"] for w in result["wells"]} == {POWDER["amount_mg"]}
+        elif protocol == "plate_scan":
+            assert result["barcode"] == "P1"
         else:
             assert result["weight_g"] == round(PLATE_TARE_G + 4 * WELL_UL / 1000, 3) == 45.6
+
+
+def test_a_scanned_barcode_that_isnt_the_jobs_plate_fails_before_anything_happens(tmp_path):
+    backend = MACHINES["barcode-reading"](0.0)
+    load = backend.load
+
+    async def wrong_plate(plate):  # a person confirms P1, but puts P7 in front of the scanner
+        await load(plate)
+        backend.scanner.backend.label = "P7"
+    backend.load = wrong_plate
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("scan-1", "barcode-reading", backend)])) as c:
+        job = c.post("/jobs", json={**req("s", "plate_scan"), "capability": "barcode-reading"}).json()
+        c.post("/devices/scan-1/load", json={"plate": "P1"})
+        job = wait(c, job["job_id"])
+        assert (job["state"], job["stoppable"]) == ("failed_preflight", True)
+        assert "scanned P7, but the job is for P1" in job["reason"], job

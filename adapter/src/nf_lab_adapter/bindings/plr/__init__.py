@@ -6,16 +6,19 @@ it up for that plate; an unload (`load(None)`) clears it. The labware carries no
 the adapter's ledger keeps which plate is on which machine.
 
 With `visualize=True`, PyLabRobot's browser view of a machine starts with the adapter
-(http://127.0.0.1:1337, or the next free port; the URL is logged). The pump array and the
-powder dispenser have none: PyLabRobot doesn't model them as deck resources.
+(http://127.0.0.1:1337, or the next free port; the URL is logged). The pump array, powder
+dispenser, sealer, peeler and barcode scanner have none: PyLabRobot doesn't model them as deck
+resources.
 
 Adding a capability: a module with a `PlrMachine` subclass (`PlrPlateHolder` for a machine that
-holds one plate through a program), its row in `MACHINES`, its wet module, and its rows in
-the conformance kit (`conformance/conftest.py`) and `wet-modules/tests/run.sh`.
+holds one plate through a program; for a machine with no PyLabRobot simulator, a simulated
+backend of our own, logging only, as in `sealer.py`), its row in `MACHINES`, its wet module,
+and its rows in the conformance kit (`conformance/conftest.py`) and `wet-modules/tests/run.sh`.
 """
 
 from pylabrobot.resources import set_volume_tracking
 
+from .barcode_scanner import PlrBarcodeScannerBackend
 from .centrifuge import PlrCentrifugeBackend
 from .heater_shaker import PlrHeaterShakerBackend
 from .incubator import PlrIncubatorBackend
@@ -24,6 +27,7 @@ from .plate_reader import PlrPlateReaderBackend
 from .powder_dispenser import PlrPowderDispenserBackend
 from .pump import PlrPumpBackend
 from .scale import PlrScaleBackend
+from .sealer import PlrPeelerBackend, PlrSealerBackend
 from .shaker import PlrShakerBackend
 from .temperature_controller import PlrTemperatureControllerBackend
 from .thermocycler import PlrQpcrBackend, PlrThermocyclerBackend
@@ -45,8 +49,12 @@ MACHINES = {
     "pumping": PlrPumpBackend,
     "weighing": PlrScaleBackend,
     "powder-dispensing": PlrPowderDispenserBackend,
+    "sealing": PlrSealerBackend,
+    "peeling": PlrPeelerBackend,
+    "barcode-reading": PlrBarcodeScannerBackend,
 }
 
-__all__ = ["MACHINES", "PlrCentrifugeBackend", "PlrHeaterShakerBackend", "PlrIncubatorBackend", "PlrLiquidHandlerBackend",
-           "PlrPlateReaderBackend", "PlrPowderDispenserBackend", "PlrPumpBackend", "PlrQpcrBackend", "PlrScaleBackend",
-           "PlrShakerBackend", "PlrTemperatureControllerBackend", "PlrThermocyclerBackend", "PlrTilterBackend"]
+__all__ = ["MACHINES", "PlrBarcodeScannerBackend", "PlrCentrifugeBackend", "PlrHeaterShakerBackend", "PlrIncubatorBackend",
+           "PlrLiquidHandlerBackend", "PlrPeelerBackend", "PlrPlateReaderBackend", "PlrPowderDispenserBackend",
+           "PlrPumpBackend", "PlrQpcrBackend", "PlrScaleBackend", "PlrSealerBackend", "PlrShakerBackend",
+           "PlrTemperatureControllerBackend", "PlrThermocyclerBackend", "PlrTilterBackend"]

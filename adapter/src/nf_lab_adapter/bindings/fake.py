@@ -12,7 +12,7 @@ class FakeBackend:
     `plate_transfer` runs like `ok` and returns PlrLiquidHandlerBackend's result shape
     (150 µL in each plate-map well), so examples/plate_transfer runs without PyLabRobot.
     Every protocol in `RESULTS` returns its PyLabRobot binding's result shape; one in
-    `READ_ONLY` (`plate_read`, `plate_weigh`), like a reader, never crosses the stop boundary."""
+    `READ_ONLY` (`plate_read`, `plate_weigh`, `plate_scan`), like a reader, never crosses the stop boundary."""
 
     PROTOCOLS = {"ok", "plate_transfer", *RESULTS, "preflight_fail", "preflight_once", "protocol_fail", "silent", "estop"}
     viewer = None

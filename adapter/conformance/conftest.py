@@ -51,7 +51,8 @@ def pytest_report_header(config):
 # (backend, capability, protocol) runs of the kit. One adapter per backend serves all its runs.
 OWN_DEVICES = {"fake": "2", "plr": "liquid-handling:2,plate-reading:2,thermocycling:2,qpcr:2,"
                                    "shaking:2,heating-shaking:2,temperature-control:2,tilting:2,"
-                                   "centrifugation:2,incubation:2,pumping:2,weighing:2,powder-dispensing:2"}
+                                   "centrifugation:2,incubation:2,pumping:2,weighing:2,powder-dispensing:2,"
+                                   "sealing:2,peeling:2,barcode-reading:2"}
 OWN = [("fake", "liquid-handling", "plate_transfer"),
        ("plr", "liquid-handling", "plate_transfer"),
        ("plr", "plate-reading", "plate_read"),
@@ -65,7 +66,10 @@ OWN = [("fake", "liquid-handling", "plate_transfer"),
        ("plr", "incubation", "plate_incubate"),
        ("plr", "pumping", "reagent_dispense"),
        ("plr", "weighing", "plate_weigh"),
-       ("plr", "powder-dispensing", "powder_dispense")]
+       ("plr", "powder-dispensing", "powder_dispense"),
+       ("plr", "sealing", "plate_seal"),
+       ("plr", "peeling", "plate_unseal"),
+       ("plr", "barcode-reading", "plate_scan")]
 
 
 def pytest_generate_tests(metafunc):

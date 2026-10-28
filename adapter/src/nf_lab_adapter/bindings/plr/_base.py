@@ -82,7 +82,8 @@ class PlrPlateHolder(PlrMachine):
     async def setup(self) -> None:
         machine = self.make()
         await machine.setup()
-        await self._serve(machine)
+        if isinstance(machine, Resource):  # a sealer or a peeler isn't a deck resource: no view
+            await self._serve(machine)
         self.machine = machine
 
     async def load(self, plate: str | None) -> None:

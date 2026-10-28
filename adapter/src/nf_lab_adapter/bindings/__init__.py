@@ -120,6 +120,8 @@ PROGRAMS = {
     "plate_tilt": {"angle_deg": 10.0, "duration_s": 120},  # tilting: pool each well's liquid to one side
     "plate_spin": {"g": 1000.0, "duration_s": 300},  # centrifugation: pellet what's in each well
     "plate_incubate": {"temperature": 37.0, "duration_s": 3600},  # incubation: grow or hold at 37 °C
+    "plate_seal": {"temperature": 165, "duration_s": 1.5},  # sealing: heat-seal a foil on
+    "plate_unseal": {"adhere_time_s": 2.5},  # peeling: peel the seal off
 }
 
 
@@ -156,12 +158,18 @@ def weighed(job: Job) -> dict:
             "wells": [w.model_dump(mode="json") for w in job.wells]}
 
 
+def scanned(job: Job) -> dict:
+    """`plate_scan`'s outputs: the barcode read off the plate (the job's plate ID), and its plate-map wells."""
+    return {"plate": job.plate, "barcode": job.plate, "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
 # Each protocol's simulated outputs, from the job alone: what the fake binding returns, and a
 # PyLabRobot binding's unless it reads them off its deck (liquid handling, the plate reader).
 RESULTS = {"plate_read": reading, "plate_split": aliquots, **dict.fromkeys(EXTRACTIONS, extracted),
            "pcr": amplified, "qpcr": quantified, **dict.fromkeys(PROGRAMS, treated),
-           "reagent_dispense": dispensed, "powder_dispense": powdered, "plate_weigh": weighed}
-READ_ONLY = {"plate_read", "plate_weigh"}  # protocols that change nothing: they never cross the stop boundary
+           "reagent_dispense": dispensed, "powder_dispense": powdered, "plate_weigh": weighed,
+           "plate_scan": scanned}
+READ_ONLY = {"plate_read", "plate_weigh", "plate_scan"}  # protocols that change nothing: they never cross the stop boundary
 
 
 class DeviceStopped(Exception):
