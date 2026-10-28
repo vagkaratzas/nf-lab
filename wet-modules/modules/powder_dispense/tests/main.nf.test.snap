@@ -1,0 +1,45 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P17",
+                "powder": "NaCl",
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "amount_mg": 5.0
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "amount_mg": 5.0
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control",
+                        "amount_mg": 5.0
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "amount_mg": 5.0
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T10:01:40.515565573",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    }
+}

@@ -128,11 +128,40 @@ def treated(job: Job) -> dict:
     return {"plate": job.plate, "program": PROGRAMS[job.protocol], "wells": [w.model_dump(mode="json") for w in job.wells]}
 
 
+# `reagent_dispense`, `powder_dispense`: what goes into each plate-map well.
+# shortcut: fixed until jobs carry protocol parameters (open question 12).
+DISPENSE = {"reagent": "wash buffer", "volume_ul": 50.0}
+POWDER = {"powder": "NaCl", "amount_mg": 5.0}
+
+
+def dispensed(job: Job) -> dict:
+    """`reagent_dispense`'s outputs: the reagent, and the volume each plate-map well got."""
+    return {"plate": job.plate, "reagent": DISPENSE["reagent"],
+            "wells": [{**w.model_dump(mode="json"), "volume_ul": DISPENSE["volume_ul"]} for w in job.wells]}
+
+
+def powdered(job: Job) -> dict:
+    """`powder_dispense`'s outputs: the powder, and the amount each plate-map well got."""
+    return {"plate": job.plate, "powder": POWDER["powder"],
+            "wells": [{**w.model_dump(mode="json"), "amount_mg": POWDER["amount_mg"]} for w in job.wells]}
+
+
+PLATE_TARE_G = 45.0  # an empty 96-well plate. shortcut: one plate type, until labware is in the job
+WELL_UL = 150.0  # what each plate-map well holds when weighed (1 g/mL)
+
+
+def weighed(job: Job) -> dict:
+    """`plate_weigh`'s outputs: the plate's weight, the tare plus each plate-map well's liquid."""
+    return {"plate": job.plate, "weight_g": round(PLATE_TARE_G + len(job.wells) * WELL_UL / 1000, 3),
+            "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
 # Each protocol's simulated outputs, from the job alone: what the fake binding returns, and a
 # PyLabRobot binding's unless it reads them off its deck (liquid handling, the plate reader).
 RESULTS = {"plate_read": reading, "plate_split": aliquots, **dict.fromkeys(EXTRACTIONS, extracted),
-           "pcr": amplified, "qpcr": quantified, **dict.fromkeys(PROGRAMS, treated)}
-READ_ONLY = {"plate_read"}  # protocols that change nothing: they never cross the stop boundary
+           "pcr": amplified, "qpcr": quantified, **dict.fromkeys(PROGRAMS, treated),
+           "reagent_dispense": dispensed, "powder_dispense": powdered, "plate_weigh": weighed}
+READ_ONLY = {"plate_read", "plate_weigh"}  # protocols that change nothing: they never cross the stop boundary
 
 
 class DeviceStopped(Exception):

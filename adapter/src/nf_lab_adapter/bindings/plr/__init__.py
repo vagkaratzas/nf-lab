@@ -19,6 +19,9 @@ from .heater_shaker import PlrHeaterShakerBackend
 from .incubator import PlrIncubatorBackend
 from .liquid_handler import PlrLiquidHandlerBackend
 from .plate_reader import PlrPlateReaderBackend
+from .powder_dispenser import PlrPowderDispenserBackend
+from .pump import PlrPumpBackend
+from .scale import PlrScaleBackend
 from .shaker import PlrShakerBackend
 from .temperature_controller import PlrTemperatureControllerBackend
 from .thermocycler import PlrQpcrBackend, PlrThermocyclerBackend
@@ -37,8 +40,11 @@ MACHINES = {
     "tilting": PlrTilterBackend,
     "centrifugation": PlrCentrifugeBackend,
     "incubation": PlrIncubatorBackend,
+    "pumping": PlrPumpBackend,
+    "weighing": PlrScaleBackend,
+    "powder-dispensing": PlrPowderDispenserBackend,
 }
 
 __all__ = ["MACHINES", "PlrCentrifugeBackend", "PlrHeaterShakerBackend", "PlrIncubatorBackend", "PlrLiquidHandlerBackend",
-           "PlrPlateReaderBackend", "PlrQpcrBackend", "PlrShakerBackend", "PlrTemperatureControllerBackend",
-           "PlrThermocyclerBackend", "PlrTilterBackend"]
+           "PlrPlateReaderBackend", "PlrPowderDispenserBackend", "PlrPumpBackend", "PlrQpcrBackend", "PlrScaleBackend",
+           "PlrShakerBackend", "PlrTemperatureControllerBackend", "PlrThermocyclerBackend", "PlrTilterBackend"]

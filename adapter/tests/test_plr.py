@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.bindings import PCR, POSITIVE_CT, PROGRAMS, QPCR
+from nf_lab_adapter.bindings import DISPENSE, PCR, PLATE_TARE_G, POSITIVE_CT, POWDER, PROGRAMS, QPCR, WELL_UL
 from nf_lab_adapter.bindings.plr import MACHINES, PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend
 from test_adapter import req, wait, wells
 
@@ -227,3 +227,31 @@ def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_
         assert c.get(f"/jobs/{late['job_id']}").json()["stoppable"] is False
         assert wait(c, late["job_id"])["state"] == "done"
         assert tray() is not None and len(rack().get_free_sites()) == len(rack().sites)  # back on the tray
+
+
+@pytest.mark.parametrize("capability, protocol, crosses", [("pumping", "reagent_dispense", True),
+                                                           ("powder-dispensing", "powder_dispense", True),
+                                                           ("weighing", "plate_weigh", False)])
+def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capability, protocol, crosses):
+    backend = MACHINES[capability](0.05)
+    plate = wells("A1:S1", "B1:NC1:negative_control", "C2:S2", "H12:BLK1:blank")  # three columns
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                               [Device("d-1", capability, backend, simulated_operator=True)])) as c:
+        job = lambda key: c.post("/jobs", json={**req(key, protocol), "capability": capability, "wells": plate}).json()
+        early = job("early")
+        wait(c, early["job_id"], lambda j: j["state"] == "running" and j["stoppable"])
+        c.post(f"/jobs/{early['job_id']}/safe_stop")
+        assert wait(c, early["job_id"])["state"] == "failed_preflight"
+        c.post(f"/jobs/{early['job_id']}/release")
+
+        done = wait(c, job("late")["job_id"])
+        assert (done["state"], done["stoppable"]) == ("done", not crosses), done
+        result = done["result"]
+        assert [w["sample"] for w in result["wells"]] == ["S1", "NC1", "S2", "BLK1"]
+        if protocol == "reagent_dispense":  # read back from the plate: each well pumped once, column by column
+            assert result["reagent"] == DISPENSE["reagent"]
+            assert {w["volume_ul"] for w in result["wells"]} == {DISPENSE["volume_ul"]}
+        elif protocol == "powder_dispense":
+            assert result["powder"] == POWDER["powder"] and {w["amount_mg"] for w in result["wells"]} == {POWDER["amount_mg"]}
+        else:
+            assert result["weight_g"] == round(PLATE_TARE_G + 4 * WELL_UL / 1000, 3) == 45.6
