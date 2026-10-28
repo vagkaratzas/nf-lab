@@ -138,13 +138,11 @@ class Contract:
     def __init__(self, base: str, spec: dict, token: str | None):
         self.base, self.spec, self.token = base, spec, token
         self.ops = {o["operationId"]: (m.upper(), p, o) for p, item in spec["paths"].items() for m, o in item.items()}
-        self.called: set[str] = set()
 
     def __call__(self, op: str, body: dict | None = None, query: dict | None = None, token: str | None = "",
                  **params: str) -> Reply:
         """token: "" sends the kit's own token, None none, anything else that."""
         method, path, o = self.ops[op]
-        self.called.add(op)
         url = self.base + path.format(**{k: urllib.parse.quote(v, safe="") for k, v in params.items()})
         if query:
             url += "?" + urllib.parse.urlencode(query)
