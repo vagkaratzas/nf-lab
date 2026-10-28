@@ -14,7 +14,9 @@ holds one plate through a program), and its row in `MACHINES`.
 
 from pylabrobot.resources import set_volume_tracking
 
+from .centrifuge import PlrCentrifugeBackend
 from .heater_shaker import PlrHeaterShakerBackend
+from .incubator import PlrIncubatorBackend
 from .liquid_handler import PlrLiquidHandlerBackend
 from .plate_reader import PlrPlateReaderBackend
 from .shaker import PlrShakerBackend
@@ -33,7 +35,10 @@ MACHINES = {
     "heating-shaking": PlrHeaterShakerBackend,
     "temperature-control": PlrTemperatureControllerBackend,
     "tilting": PlrTilterBackend,
+    "centrifugation": PlrCentrifugeBackend,
+    "incubation": PlrIncubatorBackend,
 }
 
-__all__ = ["MACHINES", "PlrHeaterShakerBackend", "PlrLiquidHandlerBackend", "PlrPlateReaderBackend", "PlrQpcrBackend",
-           "PlrShakerBackend", "PlrTemperatureControllerBackend", "PlrThermocyclerBackend", "PlrTilterBackend"]
+__all__ = ["MACHINES", "PlrCentrifugeBackend", "PlrHeaterShakerBackend", "PlrIncubatorBackend", "PlrLiquidHandlerBackend",
+           "PlrPlateReaderBackend", "PlrQpcrBackend", "PlrShakerBackend", "PlrTemperatureControllerBackend",
+           "PlrThermocyclerBackend", "PlrTilterBackend"]

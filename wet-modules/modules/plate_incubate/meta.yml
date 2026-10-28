@@ -1,0 +1,31 @@
+# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# (GET /devices: each robot's capability and protocols). One module per protocol.
+name: plate_incubate
+description: "Hold a plate in an incubator at a fixed temperature to grow or hold the samples in each plate-map well"
+keywords: [wet-lab, incubation, plate_incubate]
+lab:
+  capability: incubation  # the hint the module declares (hints 'lab/capability')
+  protocol: plate_incubate
+  protocol_version: "1.0"
+  stop_boundary: "the plate is taken in from the loading tray (incubator preheated before)"
+input:
+  - plate:
+      type: record
+      description: The plate (id) and its plate-map wells (row, column, sample, type)
+output:
+  - id:
+      type: string
+      description: The plate ID
+  - result:
+      type: file
+      pattern: result.json
+      description: "What the protocol did, per plate-map well: program (temperature, duration_s); wells[]"
+  - provenance:
+      type: file
+      pattern: provenance.json
+      description: The device job (device, attempt, state, times), any final state
+  - log:
+      type: file
+      pattern: labctl.log
+      description: Every request to the device adapter and its reply
+authors: ["@vagkaratzas"]

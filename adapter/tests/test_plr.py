@@ -187,7 +187,8 @@ def test_extraction_lyses_every_well_and_moves_the_eluate(tmp_path, protocol, an
 
 
 @pytest.mark.parametrize("capability, protocol", [("shaking", "plate_mix"), ("heating-shaking", "plate_lysis"),
-                                                  ("temperature-control", "heat_inactivation"), ("tilting", "plate_tilt")])
+                                                  ("temperature-control", "heat_inactivation"), ("tilting", "plate_tilt"),
+                                                  ("centrifugation", "plate_spin"), ("incubation", "plate_incubate")])
 def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_before_it_touches_nothing(
         tmp_path, capability, protocol):
     backend = MACHINES[capability](0.05)
@@ -206,3 +207,23 @@ def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_befor
         assert (done["state"], done["stoppable"]) == ("done", False), done
         assert done["result"]["program"] == PROGRAMS[protocol]
         assert [w["sample"] for w in done["result"]["wells"]] == ["S1", "NC1"]
+
+
+def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_on_the_tray(tmp_path):
+    backend = MACHINES["incubation"](0.05)
+    tray, rack = lambda: backend.machine.loading_tray.resource, lambda: backend.machine.racks[0]
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("inc-1", "incubation", backend)])) as c:
+        job = lambda key: c.post("/jobs", json={**req(key, "plate_incubate"), "capability": "incubation"}).json()
+        early = job("early")
+        c.post("/devices/inc-1/load", json={"plate": "P1"})  # a person puts it on the loading tray
+        wait(c, early["job_id"], lambda j: j["state"] == "running" and j["stoppable"])
+        c.post(f"/jobs/{early['job_id']}/safe_stop")
+        assert wait(c, early["job_id"])["state"] == "failed_preflight"
+        assert tray() is not None and len(rack().get_free_sites()) == len(rack().sites)  # never taken in
+        c.post(f"/jobs/{early['job_id']}/release")
+
+        late = job("late")
+        wait(c, late["job_id"], lambda j: tray() is None)  # taken in: past the boundary
+        assert c.get(f"/jobs/{late['job_id']}").json()["stoppable"] is False
+        assert wait(c, late["job_id"])["state"] == "done"
+        assert tray() is not None and len(rack().get_free_sites()) == len(rack().sites)  # back on the tray

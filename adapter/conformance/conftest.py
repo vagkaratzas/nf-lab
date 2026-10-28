@@ -50,7 +50,8 @@ def pytest_report_header(config):
 # This repo's adapters, checked when no --adapter is given: backend → its robots, and the
 # (backend, capability, protocol) runs of the kit. One adapter per backend serves all its runs.
 OWN_DEVICES = {"fake": "2", "plr": "liquid-handling:2,plate-reading:2,thermocycling:2,qpcr:2,"
-                                   "shaking:2,heating-shaking:2,temperature-control:2,tilting:2"}
+                                   "shaking:2,heating-shaking:2,temperature-control:2,tilting:2,"
+                                   "centrifugation:2,incubation:2"}
 OWN = [("fake", "liquid-handling", "plate_transfer"),
        ("plr", "liquid-handling", "plate_transfer"),
        ("plr", "plate-reading", "plate_read"),
@@ -59,7 +60,9 @@ OWN = [("fake", "liquid-handling", "plate_transfer"),
        ("plr", "shaking", "plate_mix"),
        ("plr", "heating-shaking", "plate_lysis"),
        ("plr", "temperature-control", "heat_inactivation"),
-       ("plr", "tilting", "plate_tilt")]
+       ("plr", "tilting", "plate_tilt"),
+       ("plr", "centrifugation", "plate_spin"),
+       ("plr", "incubation", "plate_incubate")]
 
 
 def pytest_generate_tests(metafunc):

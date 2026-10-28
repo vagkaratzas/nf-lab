@@ -55,7 +55,8 @@ class PlrPlateHolder(PlrMachine):
     """A machine that holds one plate and puts it through a program (`PROGRAMS`): a shaker, a
     heat block. A person's load puts a 96-well plate on it, an unload takes it off. The program
     changes the samples, so the job crosses the stop boundary as it starts: a safe stop before
-    that leaves the plate as it was loaded. Subclasses write `make()` and `treat()`."""
+    that leaves the plate as it was loaded. Subclasses write `make()` and `treat()`, and
+    override `holder` when the plate sits on a part of the machine (a bucket, a tray)."""
 
     HOLD = 3  # simulated steps a program's hold takes
 
@@ -69,6 +70,15 @@ class PlrPlateHolder(PlrMachine):
     async def treat(self, program: dict, progress: Progress) -> None:
         raise NotImplementedError
 
+    @property
+    def holder(self) -> Resource:
+        """Where a person's load puts the plate."""
+        return self.machine
+
+    async def ready(self, job: Job, progress: Progress) -> None:
+        """Pre-flight after the plate checks, still stoppable: what the machine needs before the program."""
+        await asyncio.sleep(self.step)
+
     async def setup(self) -> None:
         machine = self.make()
         await machine.setup()
@@ -76,7 +86,7 @@ class PlrPlateHolder(PlrMachine):
         self.machine = machine
 
     async def load(self, plate: str | None) -> None:
-        self._swap_plate(self.machine, cor_96_wellplate_360uL_Fb("plate") if plate else None)
+        self._swap_plate(self.holder, cor_96_wellplate_360uL_Fb("plate") if plate else None)
 
     async def _hold(self, progress: Progress) -> None:
         """The program's hold, paced and reported as a device would."""
@@ -87,11 +97,11 @@ class PlrPlateHolder(PlrMachine):
     async def run(self, job: Job, progress: Progress) -> dict:
         await asyncio.sleep(self.step)  # plate check
         progress()
-        if not self.machine.children:
-            raise RuntimeError(f"no plate on the {self.machine.name}")
-        self._check(job, self.machine.children[0])
+        if not self.holder.children:
+            raise RuntimeError(f"no plate on the {self.holder.name}")
+        self._check(job, self.holder.children[0])
         progress(state=State.running)
-        await asyncio.sleep(self.step)
+        await self.ready(job, progress)
         progress(stoppable=False)  # the program starts: the samples are changed from here on
         await self.treat(PROGRAMS[job.protocol], progress)
         progress()

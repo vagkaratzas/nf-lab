@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plate_spin result",
+  "description": "The program the plate went through, and its plate-map wells.",
+  "type": "object",
+  "required": [
+    "plate",
+    "program",
+    "wells"
+  ],
+  "properties": {
+    "plate": {
+      "type": "string",
+      "description": "The plate ID of the job"
+    },
+    "program": {
+      "type": "object",
+      "required": [
+        "g",
+        "duration_s"
+      ],
+      "properties": {
+        "g": {
+          "type": "number"
+        },
+        "duration_s": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "wells": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/well"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "well": {
+      "type": "object",
+      "required": [
+        "row",
+        "column",
+        "sample",
+        "type"
+      ],
+      "properties": {
+        "row": {
+          "type": "string",
+          "pattern": "^[A-P]$"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "sample",
+            "negative_control",
+            "positive_control",
+            "blank"
+          ]
+        }
+      }
+    }
+  }
+}

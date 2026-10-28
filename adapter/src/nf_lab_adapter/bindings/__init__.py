@@ -118,6 +118,8 @@ PROGRAMS = {
     "plate_lysis": {"temperature": 56.0, "speed_rpm": 1200, "duration_s": 600},  # heating-shaking: proteinase K lysis
     "heat_inactivation": {"temperature": 65.0, "duration_s": 1200},  # temperature-control: kill an enzyme
     "plate_tilt": {"angle_deg": 10.0, "duration_s": 120},  # tilting: pool each well's liquid to one side
+    "plate_spin": {"g": 1000.0, "duration_s": 300},  # centrifugation: pellet what's in each well
+    "plate_incubate": {"temperature": 37.0, "duration_s": 3600},  # incubation: grow or hold at 37 °C
 }
 
 
