@@ -81,7 +81,7 @@ def own_adapters(tmp_path_factory):
         run_dir = tmp_path_factory.mktemp(backend)
         token = secrets.token_urlsafe(16)
         env = {**os.environ, "NF_LAB_TOKEN": token, "NF_LAB_BACKEND": backend, "NF_LAB_DEVICES": OWN_DEVICES[backend],
-               "NF_LAB_STEP": "0.05", "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
+               "NF_LAB_STEP": "0.01", "NF_LAB_SIMULATED_OPERATOR": "1", "NF_LAB_LEDGER": str(run_dir / "ledger.sqlite")}
         env.pop("NF_LAB_VISUALIZER", None)
         log = (run_dir / "adapter.log").open("w")
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "nf_lab_adapter.app:main", "--factory",
