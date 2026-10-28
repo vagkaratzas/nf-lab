@@ -200,7 +200,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.146.0" },
-    { name = "pylabrobot", specifier = ">=0.2.2" },
+    { name = "pylabrobot", specifier = ">=0.2.2,<1" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
