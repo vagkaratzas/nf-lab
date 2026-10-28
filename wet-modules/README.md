@@ -44,6 +44,7 @@ One module per protocol, named after it.
 |---|---|
 | `parallel_extraction` | `plate_split` → `rna_extraction` and `dna_extraction` side by side → `pcr` on each eluate plate |
 | `rt_qpcr` | `rna_extraction` → `qpcr` on the eluate plate |
+| `pcr_setup` | `plate_scan` → `reagent_dispense` (master mix) → `plate_transfer` (samples) → `plate_seal` → `plate_spin` → `pcr` → `plate_unseal` |
 
 **Tests.** One nf-test per module (`modules/<protocol>/tests/main.nf.test` and its `.snap`), as in nf-core/modules: run the process on a small plate, assert it succeeded and the provenance says `done`, snapshot the parsed `result.json`. The subworkflow's test is a `nextflow_pipeline` over a small typed script (`tests/main.nf`), because nf-test's generated workflow script is untyped and can't pass the typed channel the subworkflow needs; it snapshots the sorted names of the tasks that succeeded. Provenance and log hold device IDs and times, so they're only checked for what the module promises. No `-profile`: the module's tool is `labctl`, so no conda or container. The tests need a device adapter, so `tests/run.sh` starts a fake one on :8190 with a throwaway ledger, puts `labctl` on `PATH` and runs nf-test; its arguments go to `nf-test test`:
 

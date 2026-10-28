@@ -1,0 +1,20 @@
+{
+    "P22 - two samples, a negative, a positive control and a blank": {
+        "content": [
+            [
+                "PCR_SETUP:PCR (P22)",
+                "PCR_SETUP:PLATE_SCAN (P22)",
+                "PCR_SETUP:PLATE_SEAL (P22)",
+                "PCR_SETUP:PLATE_SPIN (P22)",
+                "PCR_SETUP:PLATE_TRANSFER (P22)",
+                "PCR_SETUP:PLATE_UNSEAL (P22)",
+                "PCR_SETUP:REAGENT_DISPENSE (P22)"
+            ]
+        ],
+        "timestamp": "2026-10-28T11:28:08.619459467",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}
