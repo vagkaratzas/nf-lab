@@ -1,0 +1,17 @@
+{
+    "P25 - two compounds, a negative, a positive control and a blank": {
+        "content": [
+            [
+                "COMPOUND_PREP:PLATE_MIX (P25)",
+                "COMPOUND_PREP:PLATE_WEIGH (P25)",
+                "COMPOUND_PREP:POWDER_DISPENSE (P25)",
+                "COMPOUND_PREP:REAGENT_DISPENSE (P25)"
+            ]
+        ],
+        "timestamp": "2026-10-28T11:27:37.54445482",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}

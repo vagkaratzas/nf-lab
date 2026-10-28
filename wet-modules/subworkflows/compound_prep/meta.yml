@@ -1,0 +1,28 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: compound_prep
+description: "Dose powder into each plate's wells, weigh the plate to check the dose, add solvent, then mix to dissolve"
+keywords: [wet-lab, compound, powder-dispensing, weighing, formulation]
+components:
+  - powder_dispense
+  - plate_weigh
+  - reagent_dispense
+  - plate_mix
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - dosed:
+      type: record
+      description: "Each plate's powder dosed into each well (id, result, provenance, log)"
+  - weighed:
+      type: record
+      description: "Each plate's mass check (id, result, provenance, log)"
+  - dissolved:
+      type: record
+      description: "Each plate's solvent pumped in (id, result, provenance, log)"
+  - mixed:
+      type: record
+      description: "Each plate's shaken to dissolve (id, result, provenance, log)"
+authors: ["@vagkaratzas"]
