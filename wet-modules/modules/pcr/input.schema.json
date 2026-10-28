@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcr params",
+  "description": "The protocol's parameters, set with the process's `ext.params`: names and types only. The lab's adapter holds the defaults and limits, and refuses an unknown, wrong-typed or out-of-range param.",
+  "type": "object",
+  "properties": {
+    "lid_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "initial_denaturation_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "initial_denaturation_s": {
+      "type": "integer",
+      "description": "Seconds"
+    },
+    "cycles": {
+      "type": "integer",
+      "description": "Number of PCR cycles"
+    },
+    "denaturation_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "denaturation_s": {
+      "type": "integer",
+      "description": "Seconds"
+    },
+    "annealing_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "annealing_s": {
+      "type": "integer",
+      "description": "Seconds"
+    },
+    "extension_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "extension_s": {
+      "type": "integer",
+      "description": "Seconds"
+    },
+    "final_extension_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "final_extension_s": {
+      "type": "integer",
+      "description": "Seconds"
+    },
+    "hold_temperature": {
+      "type": "number",
+      "description": "°C"
+    },
+    "volume_ul": {
+      "type": "number",
+      "description": "µL per plate-map well"
+    }
+  },
+  "additionalProperties": false
+}

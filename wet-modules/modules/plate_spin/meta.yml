@@ -8,6 +8,7 @@ lab:
   protocol: plate_spin
   protocol_version: "1.0"
   stop_boundary: "the spin starts (door locked, plate untouched before)"
+  params: input.schema.json  # set with ext.params; the lab's adapter holds defaults and limits
 input:
   - plate:
       type: record

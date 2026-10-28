@@ -66,5 +66,73 @@
             "nf-test": "0.9.5",
             "nextflow": "26.10.2"
         }
+    },
+    "the params from ext.params": {
+        "content": [
+            {
+                "plate": "P7-PARAMS",
+                "program": {
+                    "lid_temperature": 105.0,
+                    "initial_denaturation_temperature": 95.0,
+                    "initial_denaturation_s": 120,
+                    "cycles": 45,
+                    "denaturation_temperature": 95.0,
+                    "denaturation_s": 15,
+                    "annealing_temperature": 60.0,
+                    "annealing_s": 30,
+                    "extension_temperature": 72.0,
+                    "extension_s": 30,
+                    "final_extension_temperature": 72.0,
+                    "final_extension_s": 60,
+                    "hold_temperature": 4.0,
+                    "volume_ul": 20.0,
+                    "reverse_transcription_temperature": 50.0,
+                    "reverse_transcription_s": 600,
+                    "channel": "HEX"
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "ct": null
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "ct": 19.15
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NTC1",
+                        "type": "negative_control",
+                        "ct": null
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "ct": null
+                    },
+                    {
+                        "row": "E",
+                        "column": 1,
+                        "sample": "POS1",
+                        "type": "positive_control",
+                        "ct": 25.0
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T13:32:51.948734992",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
     }
 }

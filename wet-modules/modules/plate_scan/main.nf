@@ -1,9 +1,10 @@
 nextflow.enable.types = true
 
-// Wet step: one plate_scan run on a barcode scanner, through the device adapter. A barcode
-// that isn't the job's plate fails the run. Scanning changes nothing: a failed or
-// safe-stopped scan is retryable (exit 75); an e-stopped one waits for a person's Failed,
-// then reruns with -resume.
+// Wet step: one plate_scan run on a barcode scanner, through the device adapter. A barcode that
+// isn't the job's plate fails the run. Scanning changes nothing: a failed or safe-stopped scan is
+// retryable (exit 75); an e-stopped one waits for a person's Failed, then reruns with -resume.
+// Params: none (input.schema.json is empty); `ext.params` must be unset or empty, or the adapter
+// refuses the job.
 process PLATE_SCAN {
     tag "${plate.id}"
     label 'process_wet'
@@ -22,6 +23,7 @@ process PLATE_SCAN {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -29,7 +31,10 @@ process PLATE_SCAN {
         --protocol plate_scan \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

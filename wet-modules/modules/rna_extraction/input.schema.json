@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rna_extraction params",
+  "description": "The protocol's parameters, set with the process's `ext.params`: names and types only. The lab's adapter holds the defaults and limits, and refuses an unknown, wrong-typed or out-of-range param.",
+  "type": "object",
+  "properties": {
+    "lysis_ul": {
+      "type": "number",
+      "description": "µL of lysis buffer added to each plate-map well"
+    },
+    "eluate_ul": {
+      "type": "number",
+      "description": "µL of lysate moved to the eluate plate, per well"
+    }
+  },
+  "additionalProperties": false
+}

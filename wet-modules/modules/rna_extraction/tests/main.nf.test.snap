@@ -45,5 +45,52 @@
             "nf-test": "0.9.5",
             "nextflow": "26.10.2"
         }
+    },
+    "the params from ext.params": {
+        "content": [
+            {
+                "plate": "P4-RNA-PARAMS",
+                "analyte": "RNA",
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample",
+                        "eluate_ul": 150.0,
+                        "yield_ng_ul": 13.5
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample",
+                        "eluate_ul": 150.0,
+                        "yield_ng_ul": 65.3
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control",
+                        "eluate_ul": 150.0,
+                        "yield_ng_ul": 0.0
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank",
+                        "eluate_ul": 150.0,
+                        "yield_ng_ul": 0.0
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T13:33:17.69254748",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
     }
 }

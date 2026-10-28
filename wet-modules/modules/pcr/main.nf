@@ -1,8 +1,12 @@
 nextflow.enable.types = true
 
-// Wet step: one pcr run on a thermocycler, through the device adapter. The plate is an
-// eluate (PCR) plate. One fixed program (result.json: program); cycling can't be undone,
-// so a safe stop before it leaves the plate as loaded, and after it the run finishes.
+// Wet step: one pcr run on a thermocycler, through the device adapter. The plate is an eluate
+// (PCR) plate. It runs the program the adapter resolves (result.json: program); cycling can't be
+// undone, so a safe stop before it leaves the plate as loaded, and after it the run finishes.
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'PCR' { ext.params
+// = [cycles: 35, annealing_temperature: 58.0] }`. The lab's adapter adds its defaults, refuses
+// unknown or out-of-range params (the task fails before the plate is touched) and records the
+// program it ran in provenance.json.
 process PCR {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,6 +25,7 @@ process PCR {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -28,7 +33,10 @@ process PCR {
         --protocol pcr \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

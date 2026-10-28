@@ -1,9 +1,13 @@
 nextflow.enable.types = true
 
-// Wet step: one plate_seal run on a plate sealer, through the device adapter. One fixed
-// program (result.json: program). A seal changes the plate (removing it is a plate_unseal
-// job), so a safe stop before the seal leaves the plate as loaded, and after it the run
-// finishes.
+// Wet step: one plate_seal run on a plate sealer, through the device adapter. It runs the program
+// the adapter resolves (result.json: program). A seal changes the plate (removing it is a
+// plate_unseal job), so a safe stop before the seal leaves the plate as loaded, and after it the
+// run finishes.
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'PLATE_SEAL' {
+// ext.params = [temperature: 170, duration_s: 2.0] }`. The lab's adapter adds its defaults,
+// refuses unknown or out-of-range params (the task fails before the plate is touched) and records
+// the program it ran in provenance.json.
 process PLATE_SEAL {
     tag "${plate.id}"
     label 'process_wet'
@@ -22,6 +26,7 @@ process PLATE_SEAL {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -29,7 +34,10 @@ process PLATE_SEAL {
         --protocol plate_seal \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

@@ -40,5 +40,47 @@
             "nf-test": "0.9.5",
             "nextflow": "26.10.3"
         }
+    },
+    "the params from ext.params": {
+        "content": [
+            {
+                "plate": "P12-PARAMS",
+                "program": {
+                    "temperature": 80.0,
+                    "duration_s": 600
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T13:29:44.070745049",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
     }
 }

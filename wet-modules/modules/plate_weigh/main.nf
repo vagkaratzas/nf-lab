@@ -1,8 +1,10 @@
 nextflow.enable.types = true
 
 // Wet step: one plate_weigh run on a balance, through the device adapter. Weighing changes
-// nothing: a failed or safe-stopped weighing is retryable (exit 75); an e-stopped one waits
-// for a person's Failed, then reruns with -resume.
+// nothing: a failed or safe-stopped weighing is retryable (exit 75); an e-stopped one waits for a
+// person's Failed, then reruns with -resume.
+// Params: none (input.schema.json is empty); `ext.params` must be unset or empty, or the adapter
+// refuses the job.
 process PLATE_WEIGH {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,6 +23,7 @@ process PLATE_WEIGH {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -28,7 +31,10 @@ process PLATE_WEIGH {
         --protocol plate_weigh \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

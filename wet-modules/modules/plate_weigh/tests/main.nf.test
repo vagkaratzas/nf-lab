@@ -36,4 +36,30 @@ nextflow_process {
             )
         }
     }
+
+    test("an unknown param is refused before the plate is touched") {
+
+        config "./refused.config"
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P18-REFUSED', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed },
+                { assert process.exitStatus == 1 },  // not retried: the same params would be refused again
+                { assert process.stdout.any { l -> l.contains('refused: 422') } }
+            )
+        }
+    }
 }

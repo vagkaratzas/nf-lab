@@ -1,8 +1,12 @@
 nextflow.enable.types = true
 
-// Wet step: one plate_tilt run on a plate tilter, through the device adapter. One fixed
-// program (result.json: program). A tilt moves liquid, so it counts as a change: a safe stop
-// before the tilt leaves the plate as loaded, and after it the run finishes.
+// Wet step: one plate_tilt run on a plate tilter, through the device adapter. It runs the program
+// the adapter resolves (result.json: program). A tilt moves liquid, so it counts as a change: a
+// safe stop before the tilt leaves the plate as loaded, and after it the run finishes.
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'PLATE_TILT' {
+// ext.params = [angle_deg: 15.0] }`. The lab's adapter adds its defaults, refuses unknown or
+// out-of-range params (the task fails before the plate is touched) and records the program it ran
+// in provenance.json.
 process PLATE_TILT {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,6 +25,7 @@ process PLATE_TILT {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -28,7 +33,10 @@ process PLATE_TILT {
         --protocol plate_tilt \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 

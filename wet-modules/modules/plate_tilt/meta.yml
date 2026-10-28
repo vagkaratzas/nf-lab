@@ -8,6 +8,7 @@ lab:
   protocol: plate_tilt
   protocol_version: "1.0"
   stop_boundary: "the tilt starts (plate level before)"
+  params: input.schema.json  # set with ext.params; the lab's adapter holds defaults and limits
 input:
   - plate:
       type: record

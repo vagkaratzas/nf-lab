@@ -36,4 +36,35 @@ nextflow_process {
             )
         }
     }
+
+    test("the params from ext.params") {
+
+        config "./params.config"
+
+        when {
+            process {
+                """
+                input[0] = record(id: 'P1-PARAMS', wells: [
+                    record(row: 'A', column: 1, sample: 'S1', type: 'sample'),
+                    record(row: 'B', column: 1, sample: 'S2', type: 'sample'),
+                    record(row: 'C', column: 1, sample: 'NC1', type: 'negative_control'),
+                    record(row: 'D', column: 1, sample: 'BLK1', type: 'blank')
+                ])
+                """
+            }
+        }
+
+        then {
+            def out = process.out[0][0]
+            def provenance = path(out.provenance).json
+            assertAll(
+                { assert process.success },
+                { assert provenance.state == 'done' },
+                // the adapter ran what ext.params asked for, on top of its defaults
+                { assert provenance.params == [volume_ul: 80.0] },
+                { assert [volume_ul: 80.0].every { k, v -> provenance.program[k] == v } },
+                { assert snapshot(path(out.result).json).match() }
+            )
+        }
+    }
 }

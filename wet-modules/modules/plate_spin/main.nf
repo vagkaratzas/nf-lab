@@ -1,8 +1,12 @@
 nextflow.enable.types = true
 
-// Wet step: one plate_spin run on a plate centrifuge, through the device adapter. One fixed
-// program (result.json: program). Spinning counts as a change, so a safe stop before the
-// spin starts leaves the plate as loaded, and after it the run finishes.
+// Wet step: one plate_spin run on a plate centrifuge, through the device adapter. It runs the
+// program the adapter resolves (result.json: program). Spinning counts as a change, so a safe
+// stop before the spin starts leaves the plate as loaded, and after it the run finishes.
+// Params: `ext.params`, a map of what input.schema.json lists, e.g. `withName: 'PLATE_SPIN' {
+// ext.params = [g: 500.0, duration_s: 120] }`. The lab's adapter adds its defaults, refuses
+// unknown or out-of-range params (the task fails before the plate is touched) and records the
+// program it ran in provenance.json.
 process PLATE_SPIN {
     tag "${plate.id}"
     label 'process_wet'
@@ -21,6 +25,7 @@ process PLATE_SPIN {
 
     script:
     def wells = plate.wells.collect { w -> "${w.row}${w.column}:${w.sample}:${w.type}" }.join(' ')
+    def params_json = groovy.json.JsonOutput.toJson(task.ext.params)
     """
     labctl run --wait \\
         --session ${workflow.sessionId} \\
@@ -28,7 +33,10 @@ process PLATE_SPIN {
         --protocol plate_spin \\
         --protocol-version 1.0 \\
         --plate ${plate.id} \\
-        --wells ${wells}
+        --wells ${wells} \\
+        --params - <<'JSON'
+    ${params_json}
+    JSON
     """
 }
 
