@@ -1,0 +1,44 @@
+{
+    "two samples, a negative control and a blank": {
+        "content": [
+            {
+                "plate": "P10",
+                "program": {
+                    "speed_rpm": 1000,
+                    "duration_s": 60
+                },
+                "wells": [
+                    {
+                        "row": "A",
+                        "column": 1,
+                        "sample": "S1",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "B",
+                        "column": 1,
+                        "sample": "S2",
+                        "type": "sample"
+                    },
+                    {
+                        "row": "C",
+                        "column": 1,
+                        "sample": "NC1",
+                        "type": "negative_control"
+                    },
+                    {
+                        "row": "D",
+                        "column": 1,
+                        "sample": "BLK1",
+                        "type": "blank"
+                    }
+                ]
+            }
+        ],
+        "timestamp": "2026-10-28T08:40:28.594620263",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.3"
+        }
+    }
+}

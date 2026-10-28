@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nf_lab_adapter.app import Device, create_app
-from nf_lab_adapter.bindings import PCR, POSITIVE_CT, QPCR
-from nf_lab_adapter.bindings.plr import PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend
+from nf_lab_adapter.bindings import PCR, POSITIVE_CT, PROGRAMS, QPCR
+from nf_lab_adapter.bindings.plr import MACHINES, PlrLiquidHandlerBackend, PlrPlateReaderBackend, PlrQpcrBackend, PlrThermocyclerBackend
 from test_adapter import req, wait, wells
 
 
@@ -184,3 +184,25 @@ def test_extraction_lyses_every_well_and_moves_the_eluate(tmp_path, protocol, an
         assert src.get_item("D2").tracker.get_used_volume() == 250.0  # + 50 lysis - 100 lysate: controls are on the aliquot
         assert buf.get_item("D2").tracker.get_used_volume() == 250.0 and eluate.get_item("B2").tracker.get_used_volume() == 0
         assert eluate.get_item("D2").tracker.get_used_volume() == 100.0
+
+
+@pytest.mark.parametrize("capability, protocol", [("shaking", "plate_mix"), ("heating-shaking", "plate_lysis"),
+                                                  ("temperature-control", "heat_inactivation"), ("tilting", "plate_tilt")])
+def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_before_it_touches_nothing(
+        tmp_path, capability, protocol):
+    backend = MACHINES[capability](0.05)
+    with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
+                               [Device("d-1", capability, backend, simulated_operator=True)])) as c:
+        job = lambda key: c.post("/jobs", json={**req(key, protocol), "capability": capability,
+                                                "wells": wells("A1:S1", "B1:NC1:negative_control")}).json()
+        early = job("early")
+        wait(c, early["job_id"], lambda j: j["state"] == "running" and j["stoppable"])
+        c.post(f"/jobs/{early['job_id']}/safe_stop")
+        early = wait(c, early["job_id"])
+        assert (early["state"], early["reason"], early["stoppable"]) == ("failed_preflight", "safe_stop", True)
+        c.post(f"/jobs/{early['job_id']}/release")
+
+        done = wait(c, job("late")["job_id"])
+        assert (done["state"], done["stoppable"]) == ("done", False), done
+        assert done["result"]["program"] == PROGRAMS[protocol]
+        assert [w["sample"] for w in done["result"]["wells"]] == ["S1", "NC1"]

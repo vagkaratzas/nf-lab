@@ -111,10 +111,25 @@ def quantified(job: Job) -> dict:
     return {"plate": job.plate, "program": QPCR, "wells": [{**w.model_dump(mode="json"), "ct": ct(w)} for w in job.wells]}
 
 
+# Each plate-holder protocol's one program (°C, rpm, degrees, seconds): the plate sits on the machine
+# and goes through it. shortcut: fixed until jobs carry protocol parameters (DESIGN open question 12).
+PROGRAMS = {
+    "plate_mix": {"speed_rpm": 1000, "duration_s": 60},  # shaking: mix reagent into each well
+    "plate_lysis": {"temperature": 56.0, "speed_rpm": 1200, "duration_s": 600},  # heating-shaking: proteinase K lysis
+    "heat_inactivation": {"temperature": 65.0, "duration_s": 1200},  # temperature-control: kill an enzyme
+    "plate_tilt": {"angle_deg": 10.0, "duration_s": 120},  # tilting: pool each well's liquid to one side
+}
+
+
+def treated(job: Job) -> dict:
+    """A plate-holder protocol's outputs: the program the plate went through, and its plate-map wells."""
+    return {"plate": job.plate, "program": PROGRAMS[job.protocol], "wells": [w.model_dump(mode="json") for w in job.wells]}
+
+
 # Each protocol's simulated outputs, from the job alone: what the fake binding returns, and a
 # PyLabRobot binding's unless it reads them off its deck (liquid handling, the plate reader).
 RESULTS = {"plate_read": reading, "plate_split": aliquots, **dict.fromkeys(EXTRACTIONS, extracted),
-           "pcr": amplified, "qpcr": quantified}
+           "pcr": amplified, "qpcr": quantified, **dict.fromkeys(PROGRAMS, treated)}
 READ_ONLY = {"plate_read"}  # protocols that change nothing: they never cross the stop boundary
 
 

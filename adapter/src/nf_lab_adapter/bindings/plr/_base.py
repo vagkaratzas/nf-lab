@@ -1,10 +1,13 @@
 """What every PyLabRobot binding shares: pacing, the browser view, pre-flight checks and the plate."""
 
-from pylabrobot.resources import Resource
+import asyncio
+
+from pylabrobot.machines import Machine
+from pylabrobot.resources import Resource, cor_96_wellplate_360uL_Fb
 from pylabrobot.visualizer import Visualizer
 
-from .. import RESULTS
-from ...contract import Job
+from .. import PROGRAMS, RESULTS, Progress
+from ...contract import Job, State
 
 ROWS = "ABCDEFGHIJKLMNOP"
 
@@ -46,3 +49,50 @@ class PlrMachine:
 
     async def read_result(self, job: Job) -> dict:
         return RESULTS[job.protocol](job)
+
+
+class PlrPlateHolder(PlrMachine):
+    """A machine that holds one plate and puts it through a program (`PROGRAMS`): a shaker, a
+    heat block. A person's load puts a 96-well plate on it, an unload takes it off. The program
+    changes the samples, so the job crosses the stop boundary as it starts: a safe stop before
+    that leaves the plate as it was loaded. Subclasses write `make()` and `treat()`."""
+
+    HOLD = 3  # simulated steps a program's hold takes
+
+    def __init__(self, step: float = 0.5, visualize: bool = False):
+        super().__init__(step, visualize)
+        self.machine = None
+
+    def make(self) -> Machine:
+        raise NotImplementedError
+
+    async def treat(self, program: dict, progress: Progress) -> None:
+        raise NotImplementedError
+
+    async def setup(self) -> None:
+        machine = self.make()
+        await machine.setup()
+        await self._serve(machine)
+        self.machine = machine
+
+    async def load(self, plate: str | None) -> None:
+        self._swap_plate(self.machine, cor_96_wellplate_360uL_Fb("plate") if plate else None)
+
+    async def _hold(self, progress: Progress) -> None:
+        """The program's hold, paced and reported as a device would."""
+        for _ in range(self.HOLD):
+            await asyncio.sleep(self.step)
+            progress()
+
+    async def run(self, job: Job, progress: Progress) -> dict:
+        await asyncio.sleep(self.step)  # plate check
+        progress()
+        if not self.machine.children:
+            raise RuntimeError(f"no plate on the {self.machine.name}")
+        self._check(job, self.machine.children[0])
+        progress(state=State.running)
+        await asyncio.sleep(self.step)
+        progress(stoppable=False)  # the program starts: the samples are changed from here on
+        await self.treat(PROGRAMS[job.protocol], progress)
+        progress()
+        return await self.read_result(job)
