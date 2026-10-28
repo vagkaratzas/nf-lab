@@ -1,0 +1,28 @@
+# A wet subworkflow: nf-core subworkflow meta.yml. `components` are the wet modules it chains;
+# a lab needs a robot for each module's capability (GET /devices).
+name: dna_extraction_qc
+description: "Lyse each plate's cells, spin down the debris, extract the DNA, then read the eluate plate to check the yield"
+keywords: [wet-lab, extraction, dna, lysis, centrifugation, qc]
+components:
+  - plate_lysis
+  - plate_spin
+  - dna_extraction
+  - plate_read
+input:
+  - plates:
+      type: record
+      description: "Channel of plates: the plate (id) and its plate-map wells (row, column, sample, type)"
+output:
+  - lysed:
+      type: record
+      description: "Each plate's lysis on a heater-shaker (id, result, provenance, log)"
+  - spun:
+      type: record
+      description: "Each plate's debris spun down (id, result, provenance, log)"
+  - extracted:
+      type: record
+      description: "Each plate's DNA extraction into the eluate plate (id, result, provenance, log)"
+  - read:
+      type: record
+      description: "Each plate's yield per eluate well (id, result, provenance, log)"
+authors: ["@vagkaratzas"]

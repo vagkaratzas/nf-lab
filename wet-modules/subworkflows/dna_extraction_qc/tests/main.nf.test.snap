@@ -1,0 +1,17 @@
+{
+    "P24 - two samples, a negative, a positive control and an extraction blank": {
+        "content": [
+            [
+                "DNA_EXTRACTION_QC:DNA_EXTRACTION (P24)",
+                "DNA_EXTRACTION_QC:PLATE_LYSIS (P24)",
+                "DNA_EXTRACTION_QC:PLATE_READ (P24)",
+                "DNA_EXTRACTION_QC:PLATE_SPIN (P24)"
+            ]
+        ],
+        "timestamp": "2026-10-28T11:27:49.53170561",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.2"
+        }
+    }
+}
