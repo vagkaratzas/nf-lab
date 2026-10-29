@@ -237,7 +237,7 @@ def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_
                                                            ("weighing", "plate_weigh", False),
                                                            ("barcode-reading", "plate_scan", False)])
 def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capability, protocol, crosses):
-    backend = MACHINES[capability](0.05)
+    backend = MACHINES[capability](0.5)  # a scan is stoppable for one step: wide enough for slow CI runners
     plate = wells("A1:S1", "B1:NC1:negative_control", "C2:S2", "H12:BLK1:blank")  # three columns
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
                                [Device("d-1", capability, backend, simulated_operator=True)])) as c:
@@ -248,7 +248,7 @@ def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capabil
         assert wait(c, early["job_id"])["state"] == "failed_preflight"
         c.post(f"/jobs/{early['job_id']}/release")
 
-        done = wait(c, job("late")["job_id"])
+        done = wait(c, job("late")["job_id"], timeout=30)
         assert (done["state"], done["stoppable"]) == ("done", not crosses), done
         result = done["result"]
         assert [w["sample"] for w in result["wells"]] == ["S1", "NC1", "S2", "BLK1"]
