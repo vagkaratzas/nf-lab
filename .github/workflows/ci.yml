@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:  # run everything on any branch: gh workflow run CI --ref <branch>
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Unit tests and lint
