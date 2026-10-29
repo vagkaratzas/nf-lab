@@ -8,6 +8,7 @@ nextflowPlugin {
     nextflowVersion = '26.10.0'  // TaskCacheStrategy/TaskHasherFactory need 26.x
 
     provider = 'vagkaratzas'
+    description = 'Robotic wet-lab steps in Nextflow pipelines: a lab executor that never runs a wet step twice and safe-stops robots on abort'
     className = 'vagkaratzas.plugin.LabPlugin'
     extensionPoints = [
         'vagkaratzas.plugin.LabConfig',
