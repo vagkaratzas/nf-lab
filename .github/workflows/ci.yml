@@ -23,7 +23,7 @@ jobs:
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # immutable releases since v8: no floating major tag
 
       - name: Adapter and labctl tests
         working-directory: adapter
@@ -54,7 +54,7 @@ jobs:
           java-version: 17
           distribution: temurin
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # immutable releases since v8: no floating major tag
 
       - uses: nf-core/setup-nextflow@v3
         with:
