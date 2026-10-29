@@ -8,6 +8,7 @@ nextflowPlugin {
     nextflowVersion = '26.10.0'  // TaskCacheStrategy/TaskHasherFactory need 26.x
 
     provider = 'vagkaratzas'
+    description = 'Robotic wet-lab steps in Nextflow pipelines: a lab executor that never runs a wet step twice and safe-stops robots on abort'
     className = 'vagkaratzas.plugin.LabPlugin'
     extensionPoints = [
         'vagkaratzas.plugin.LabConfig',
@@ -15,12 +16,6 @@ nextflowPlugin {
         'vagkaratzas.plugin.LabExtension',
         'vagkaratzas.plugin.LabFactory'
     ]
-
-    registry {
-        // From the environment (`make` fills it from .env); never pass the token as a CLI property.
-        apiKey = System.getenv('NPR_API_KEY')
-        url = System.getenv('NPR_API_URL')
-    }
 }
 
 // Keep parameter names in spec.json (arg0 otherwise); drop once nextflow-plugin-gradle#27 ships

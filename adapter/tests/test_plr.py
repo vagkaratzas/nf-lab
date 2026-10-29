@@ -194,7 +194,7 @@ def test_extraction_lyses_every_well_and_moves_the_eluate(tmp_path, protocol, an
                                                   ("sealing", "plate_seal"), ("peeling", "plate_unseal")])
 def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_before_it_touches_nothing(
         tmp_path, capability, protocol):
-    backend = MACHINES[capability](0.05)
+    backend = MACHINES[capability](0.5)  # safe_stop must land in the pre-flight step, even on slow CI runners
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
                                [Device("d-1", capability, backend, simulated_operator=True)])) as c:
         job = lambda key: c.post("/jobs", json={**req(key, protocol), "capability": capability,
@@ -206,14 +206,14 @@ def test_a_plate_holder_runs_its_program_past_the_boundary_and_a_safe_stop_befor
         assert (early["state"], early["reason"], early["stoppable"]) == ("failed_preflight", "safe_stop", True)
         c.post(f"/jobs/{early['job_id']}/release")
 
-        done = wait(c, job("late")["job_id"])
+        done = wait(c, job("late")["job_id"], timeout=30)
         assert (done["state"], done["stoppable"]) == ("done", False), done
         assert done["result"]["program"] == default(protocol)
         assert [w["sample"] for w in done["result"]["wells"]] == ["S1", "NC1"]
 
 
 def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_on_the_tray(tmp_path):
-    backend = MACHINES["incubation"](0.05)
+    backend = MACHINES["incubation"](0.5)  # safe_stop must land in the pre-flight step, even on slow CI runners
     tray, rack = lambda: backend.machine.loading_tray.resource, lambda: backend.machine.racks[0]
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"), [Device("inc-1", "incubation", backend)])) as c:
         job = lambda key: c.post("/jobs", json={**req(key, "plate_incubate"), "capability": "incubation"}).json()
@@ -226,9 +226,9 @@ def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_
         c.post(f"/jobs/{early['job_id']}/release")
 
         late = job("late")
-        wait(c, late["job_id"], lambda j: tray() is None)  # taken in: past the boundary
+        wait(c, late["job_id"], lambda j: tray() is None, timeout=30)  # taken in: past the boundary
         assert c.get(f"/jobs/{late['job_id']}").json()["stoppable"] is False
-        assert wait(c, late["job_id"])["state"] == "done"
+        assert wait(c, late["job_id"], timeout=30)["state"] == "done"
         assert tray() is not None and len(rack().get_free_sites()) == len(rack().sites)  # back on the tray
 
 
@@ -237,7 +237,7 @@ def test_the_incubator_takes_the_plate_in_only_past_preflight_and_hands_it_back_
                                                            ("weighing", "plate_weigh", False),
                                                            ("barcode-reading", "plate_scan", False)])
 def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capability, protocol, crosses):
-    backend = MACHINES[capability](0.05)
+    backend = MACHINES[capability](0.5)  # a scan is stoppable for one step: wide enough for slow CI runners
     plate = wells("A1:S1", "B1:NC1:negative_control", "C2:S2", "H12:BLK1:blank")  # three columns
     with TestClient(create_app(str(tmp_path / "ledger.sqlite"),
                                [Device("d-1", capability, backend, simulated_operator=True)])) as c:
@@ -248,7 +248,7 @@ def test_a_dispense_crosses_the_boundary_a_weighing_never_does(tmp_path, capabil
         assert wait(c, early["job_id"])["state"] == "failed_preflight"
         c.post(f"/jobs/{early['job_id']}/release")
 
-        done = wait(c, job("late")["job_id"])
+        done = wait(c, job("late")["job_id"], timeout=30)
         assert (done["state"], done["stoppable"]) == ("done", not crosses), done
         result = done["result"]
         assert [w["sample"] for w in result["wells"]] == ["S1", "NC1", "S2", "BLK1"]

@@ -1,0 +1,65 @@
+name: Publish
+# Publishes when CI passes on main and the version in build.gradle has no tag yet.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish plugin to Nextflow registry
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0  # tags are needed to check for an existing release
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Check version
+        id: version
+        env:
+          NPR_API_KEY: ${{ secrets.NF_PLUGIN_PUBLISH_TOKEN }}
+        run: |
+          VERSION=$(sed -n "s/^version = '\(.*\)'/\1/p" build.gradle)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION exists, skipping release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$NPR_API_KEY" ]; then
+            echo "::warning::NF_PLUGIN_PUBLISH_TOKEN secret is not set, skipping release of v$VERSION"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to registry
+        if: steps.version.outputs.release == 'true'
+        run: make release
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+          NPR_API_KEY: ${{ secrets.NF_PLUGIN_PUBLISH_TOKEN }}
+
+      - name: Create tag and GitHub release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="[$VERSION]" '/^## /{p = index($0, v) > 0; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $VERSION" > notes.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release $VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file notes.md
