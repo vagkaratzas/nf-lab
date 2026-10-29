@@ -4,6 +4,8 @@ Robotic wet-lab steps in Nextflow pipelines, through a plugin. One pipeline mixe
 
 Prototype, built against PyLabRobot's simulated machines; no real robot needed.
 
+**[Take the tour](https://vagkaratzas.github.io/nf-lab/)**: follow one plate from a pipeline to a simulated robot and back, in your browser. Abort the run, press E-stop, `-resume`.
+
 ![A pipeline's wet tasks go through the lab executor and labctl to a device adapter, which holds the robot pool, the lock and the job ledger, and drives the robots through bindings; dry tasks run as usual](docs/images/flow.svg)
 
 ## Quickstart
