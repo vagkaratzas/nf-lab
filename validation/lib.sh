@@ -37,7 +37,9 @@ logged() { grep -c -- "$1" .nextflow.log || true; }
 # until_sql "<query>": wait (up to 30 s) until the query returns 1
 until_sql() {
     for _ in $(seq 150); do [[ $(sql "$1") == 1 ]] && return; sleep 0.2; done
-    echo "timed out waiting for: $1" >&2; return 1
+    echo "timed out waiting for: $1" >&2
+    sql "SELECT job_id, plate, state, attempt, reason FROM jobs" >&2  # the state it got stuck in
+    return 1
 }
 
 # fails <cmd>: the command must fail (`! cmd` never stops a set -e script)
