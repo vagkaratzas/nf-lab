@@ -119,6 +119,14 @@ choices = ["master mix", "viability reagent", "DMSO"]
 
 Keys: `min` and `max` (numbers), `choices` (strings), `default`, `fixed`. Every value must fit the machine's own limits in `PARAMS`; a file that doesn't (or names an unknown protocol or param, or holds `nan`) stops the adapter at start. The file applies to every robot that runs the protocol.
 
+**Where to put it:** save it as `adapter/limits.toml`, next to the ledger, and start the adapter from `adapter/` with the variable set. The adapter only reads the file `NF_LAB_LIMITS` names: there is no default path, so without the variable the lab's limits are ignored. A relative path is read from the directory the adapter starts in.
+
+```bash
+cd adapter && NF_LAB_LIMITS=limits.toml NF_LAB_BACKEND=plr uv run uvicorn nf_lab_adapter.app:main --factory
+```
+
+The file is read once, at start: restart the adapter after changing it.
+
 ## Submit a job by hand
 
 `labctl` is the same client a pipeline uses:
