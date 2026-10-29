@@ -9,7 +9,7 @@ lab {
 CONFIG
 NF_LAB_ADAPTER=$dead nf -c lab.config --plates 1
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done'") == 1 ]]
-# grace: an unreachable adapter exits 69 after 1 s, not labctl's default 5 min (two plates, three attempts each)
+# grace: an unreachable adapter exits 69 after 1 s, not labctl's default 5 min (three attempts; one plate, since a second plate's pending retry is dropped once the first gives up)
 cat > dead.config <<CONFIG
 lab {
     adapter = '$dead'
@@ -17,6 +17,6 @@ lab {
 }
 CONFIG
 SECONDS=0
-fails nf -c dead.config --plates 2
+fails nf -c dead.config --plates 1
 (( SECONDS < 120 ))
-[[ $(grep -lx 69 work/*/*/.exitcode | wc -l) == 6 ]]
+[[ $(grep -lx 69 work/*/*/.exitcode | wc -l) == 3 ]]
