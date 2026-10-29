@@ -576,6 +576,10 @@
       $$('pre code', box).forEach(highlight);
       const cb = $('[data-action="toggle-params"]', box);
       if (cb) cb.checked = S.params45;
+      // Two columns: bring the new story into view if the reader had scrolled past its top.
+      if (matchMedia('(min-width: 1180px)').matches && box.getBoundingClientRect().top < 0) {
+        window.scrollTo({ top: window.scrollY + $('#tour').getBoundingClientRect().top - 16, behavior: REDUCED ? 'auto' : 'smooth' });
+      }
     }
     const f = flags(), b = binds();
     $$('[data-when]', box).forEach(e => {

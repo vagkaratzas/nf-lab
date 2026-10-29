@@ -42,38 +42,43 @@
       </ul>
     </details>
   </section>
+</div>
 
-  <section id="tour" class="stage-card" aria-label="The plate's journey">
-<div class="stage-scroll">
-    <svg id="stage" viewBox="0 0 1200 690" role="img" aria-labelledby="stage-title">
-      <title id="stage-title">A conveyor loop: Nextflow on the left, the lab on the right, the HTTP contract between them. Fourteen stations; the plate moves between them.</title>
-    </svg>
+<div class="wrap">
+  <div class="tour" id="tour">
+    <section class="stage-card" aria-label="The plate's journey">
+      <div class="stage-scroll">
+      <svg id="stage" viewBox="0 0 1200 690" role="img" aria-labelledby="stage-title">
+        <title id="stage-title">A conveyor loop: Nextflow on the left, the lab on the right, the HTTP contract between them. Fourteen stations; the plate moves between them.</title>
+      </svg>
+      </div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="controls">
+        <button class="btn" id="prev" aria-label="Previous station">← Prev</button>
+        <span class="counter" id="counter">0 / 14</span>
+        <button class="btn primary" id="next">Start →</button>
+        <button class="btn play-progress" id="play" aria-pressed="false">▶ Play tour</button>
+        <button class="btn" id="reset" title="New run, new ledger">↺ Reset</button>
+        <span class="spacer"></span>
+        <span class="hint"><kbd>←</kbd> <kbd>→</kbd> stations · <kbd>Space</kbd> play · <kbd>R</kbd> reset</span>
+      </div>
+      <nav class="chips" id="chips" aria-label="Stations"></nav>
+    </section>
+    <div class="side">
+      <article class="card detail" id="detail" aria-live="polite"></article>
+      <aside class="card traveller">
+        <h3>Plate Q01</h3>
+        <p class="sub">92 samples, 4 controls · the traveller's card</p>
+        <svg id="bigplate" viewBox="0 0 300 206" aria-label="Plate Q01, 96 wells"></svg>
+        <p class="well-tip" id="well-tip">Hover a well.</p>
+        <div class="legend" id="legend"></div>
+        <dl class="facts" id="facts"></dl>
+      </aside>
     </div>
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <div class="controls">
-      <button class="btn" id="prev" aria-label="Previous station">← Prev</button>
-      <span class="counter" id="counter">0 / 14</span>
-      <button class="btn primary" id="next">Start →</button>
-      <button class="btn play-progress" id="play" aria-pressed="false">▶ Play tour</button>
-      <button class="btn" id="reset" title="New run, new ledger">↺ Reset</button>
-      <span class="spacer"></span>
-      <span class="hint"><kbd>←</kbd> <kbd>→</kbd> stations · <kbd>Space</kbd> play · <kbd>R</kbd> reset</span>
-    </div>
-    <nav class="chips" id="chips" aria-label="Stations"></nav>
-  </section>
-
-  <div class="below">
-    <article class="card detail" id="detail" aria-live="polite"></article>
-    <aside class="card traveller">
-      <h3>Plate Q01</h3>
-      <p class="sub">92 samples, 4 controls · the traveller's card</p>
-      <svg id="bigplate" viewBox="0 0 300 206" aria-label="Plate Q01, 96 wells"></svg>
-      <p class="well-tip" id="well-tip">Hover a well.</p>
-      <div class="legend" id="legend"></div>
-      <dl class="facts" id="facts"></dl>
-    </aside>
   </div>
+</div>
 
+<div class="wrap">
   <section class="section" id="run-it">
     <h2>Run it yourself</h2>
     <p>Everything above runs on your machine against simulated robots. You need Java 17, <a href="https://docs.astral.sh/uv/">uv</a> and Nextflow 26.10.0 or later.</p>
