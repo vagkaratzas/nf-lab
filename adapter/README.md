@@ -1,4 +1,4 @@
-# nf-lab device adapter
+# nf-labrobotics device adapter
 
 The adapter stands between Nextflow and the lab's robots. A wet task in a pipeline doesn't talk to a robot. It runs `labctl`, which asks the adapter for a job ("transfer plate P1 on any liquid handler"). The adapter keeps every job in a ledger, so the same job never runs twice: not after a retry, not after `-resume`, not from a new launch directory. It runs each job on a robot that is free and holds the job's plate.
 

@@ -1,5 +1,5 @@
-// nf-lab guide: one plate's journey from a Nextflow pipeline to a simulated robot and back.
-// No dependencies. The plate map, the idempotency key and the Ct values are computed as nf-lab
+// nf-labrobotics guide: one plate's journey from a Nextflow pipeline to a simulated robot and back.
+// No dependencies. The plate map, the idempotency key and the Ct values are computed as nf-labrobotics
 // computes them; timings, job IDs and task hashes are illustrative.
 (() => {
   'use strict';

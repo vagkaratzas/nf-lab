@@ -73,7 +73,7 @@ The module passes the map to `labctl` as is, and the lab's adapter checks it: an
 **Tests.** nf-tests per module (`modules/<protocol>/tests/main.nf.test` and its `.snap`), as in nf-core/modules: run the process on a small plate, assert it succeeded and the provenance says `done`, snapshot the parsed `result.json`; then again with `ext.params` from the test's `params.config`, checking the program ran; `plate_spin`, `plate_weigh` and `plate_scan` also check that an unknown param (`refused.config`) fails the task. The subworkflow's test is a `nextflow_pipeline` over a small typed script (`tests/main.nf`), because nf-test's generated workflow script is untyped and can't pass the typed channel the subworkflow needs; it snapshots the sorted names of the tasks that succeeded. Provenance and log hold device IDs and times, so they're only checked for what the module promises. No `-profile`: the module's tool is `labctl`, so no conda or container. The tests need a device adapter, so `tests/run.sh` starts a fake one on :8190 with a throwaway ledger, puts `labctl` on `PATH` and runs nf-test; its arguments go to `nf-test test`:
 
 ```bash
-make install                      # once: the nf-lab plugin (Java 17)
+make install                      # once: the nf-labrobotics plugin (Java 17)
 (cd adapter && uv sync)           # once
 export NXF_VER=26.10.2            # nf-test from PATH, or set NF_TEST=/path/to/nf-test
 wet-modules/tests/run.sh                          # every module and subworkflow (about 5 min)

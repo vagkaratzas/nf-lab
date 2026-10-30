@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "nf-lab device adapter",
+    "title": "nf-labrobotics device adapter",
     "version": "0.1.0"
   },
   "paths": {

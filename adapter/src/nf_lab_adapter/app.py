@@ -334,7 +334,7 @@ def create_app(ledger_path: str, devices: list[Device], token: str | None = None
             raise HTTPException(401, "missing or wrong bearer token: set NF_LAB_TOKEN to the adapter's token",
                                 headers={"WWW-Authenticate": "Bearer"})
 
-    app = FastAPI(title="nf-lab device adapter", version="0.1.0", lifespan=lifespan,
+    app = FastAPI(title="nf-labrobotics device adapter", version="0.1.0", lifespan=lifespan,
                   dependencies=[Depends(check_token)],
                   responses={401: {"description": "Missing or wrong bearer token (the adapter sets one)"}})
 

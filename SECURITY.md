@@ -1,6 +1,6 @@
 # Security policy
 
-nf-lab is a prototype. It drives simulated machines, and only the latest release gets fixes.
+nf-labrobotics is a prototype. It drives simulated machines, and only the latest release gets fixes.
 
 ## Reporting a vulnerability
 

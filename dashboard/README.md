@@ -1,4 +1,4 @@
-# nf-lab dashboard
+# nf-labrobotics dashboard
 
 A live view of one lab run, for demos. It shows, refreshed every second:
 
@@ -38,7 +38,7 @@ Settings: `NF_LAB_DEMO_BEAT` (seconds before each person step, and the least a n
 
 ## Run with your own adapter
 
-Three shells, from the nf-lab root:
+Three shells, from the nf-labrobotics root:
 
 ```bash
 # 1. the adapter: two simulated robots

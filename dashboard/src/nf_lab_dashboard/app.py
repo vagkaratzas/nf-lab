@@ -36,7 +36,7 @@ from fastapi.responses import HTMLResponse
 
 from .demo import EXAMPLES, Busy, Demo, Settings, auth
 
-NF_LAB = Path(__file__).parents[3]  # dashboard/src/nf_lab_dashboard/app.py -> nf-lab
+NF_LAB = Path(__file__).parents[3]  # dashboard/src/nf_lab_dashboard/app.py -> nf-labrobotics
 
 SUBMIT = re.compile(r"\[(\w\w/\w{6})\] (Submitted|Re-submitted|Cached) process > (.+)$")
 DONE = re.compile(r"Task completed > TaskHandler\[id: \d+; name: (.+?); status: (\w+); exit: (\S+);")
@@ -160,7 +160,7 @@ def main() -> FastAPI:
         yield
         await demo.shutdown()  # the adapter and pipeline the control panel started
 
-    app = FastAPI(title="nf-lab dashboard", lifespan=lifespan)
+    app = FastAPI(title="nf-labrobotics dashboard", lifespan=lifespan)
 
     @app.get("/", include_in_schema=False)
     async def page() -> HTMLResponse:

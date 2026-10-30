@@ -19,7 +19,7 @@ include { RT_QPCR } from '../../wet-modules/subworkflows/rt_qpcr'
 include { HEAT_INACTIVATION } from '../../wet-modules/modules/heat_inactivation'
 include { PLATE_TILT } from '../../wet-modules/modules/plate_tilt'
 include { LAB_REPORT } from '../plate_transfer/modules/local/lab_report'
-include { labPlate } from 'plugin/nf-lab'
+include { labPlate } from 'plugin/nf-labrobotics'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,routine,row,column,sample,type

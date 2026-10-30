@@ -11,7 +11,7 @@ Nextflow executor plugin for robotic wet-lab steps (prototype). Start with READM
 - **Branches:** work on `dev`; `main` gets reviewed PRs from `dev`, with CI green.
 - **Java:** the plugin build needs Java 17.
 
-## nf-lab adapter / dashboard dev
+## nf-labrobotics adapter / dashboard dev
 - Before starting the adapter or running e2e tests, check for stale processes and env vars: `lsof -i :8000 -i :8100` and `env | grep NF_LAB_ADAPTER`. Kill orphaned adapters and unset stale ports first.
 - E2E timing assertions must use generous windows, because GitHub CI runners are much slower than local. Never assert sub-second timings.
 - Work feature by feature: implement ONE plan item, test it, commit it, then stop and check in before the next.
