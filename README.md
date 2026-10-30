@@ -205,3 +205,7 @@ The end-to-end checks run the `validation/` pipeline against a simulated device 
 ## Publishing
 
 Not published to the Nextflow plugin registry yet. `make install` puts the plugin in `~/.nextflow/plugins/nf-labrobotics-0.1.0`, and `id 'nf-labrobotics@0.1.0'` loads it from there. To publish: set your registry token as `npr.apiKey` in `$HOME/.gradle/gradle.properties` or as `NPR_API_KEY` in the environment, then `make release`. Never commit it.
+
+## License
+
+Apache License 2.0. See [COPYING](COPYING).
