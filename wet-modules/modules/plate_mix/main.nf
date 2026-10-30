@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process PLATE_MIX {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'shaking'
+    hints 'labrobotics/capability': 'shaking'
 
     input:
     plate: Plate

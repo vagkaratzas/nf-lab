@@ -8,7 +8,7 @@ nextflow.enable.types = true
 process PLATE_SCAN {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'barcode-reading'
+    hints 'labrobotics/capability': 'barcode-reading'
 
     input:
     plate: Plate

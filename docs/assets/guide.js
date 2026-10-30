@@ -1,5 +1,5 @@
-// nf-lab guide: one plate's journey from a Nextflow pipeline to a simulated robot and back.
-// No dependencies. The plate map, the idempotency key and the Ct values are computed as nf-lab
+// nf-labrobotics guide: one plate's journey from a Nextflow pipeline to a simulated robot and back.
+// No dependencies. The plate map, the idempotency key and the Ct values are computed as nf-labrobotics
 // computes them; timings, job IDs and task hashes are illustrative.
 (() => {
   'use strict';
@@ -376,7 +376,7 @@
     L.push(['dim', 'Launching `examples/qpcr/main.nf` [mad_curie]']);
     L.push(['', 'Pipeline is starting! 🚀']);
     if (S.idx >= 3 || S.rerun) {
-      L.push(['', 'executor >  lab']);
+      L.push(['', 'executor >  labrobotics']);
       L.push(['ok', `[${nfHash(taskHash('x'))}] RT_QPCR:RNA_EXTRACTION (Q11) | 11 of 11${resumed ? ', cached: 11' : ''} ✔`]);
       const j = job(), h = nfHash(taskHash(S.attempts.length || 1));
       let q = '| 0 of 11';

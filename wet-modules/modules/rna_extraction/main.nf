@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process RNA_EXTRACTION {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'liquid-handling'
+    hints 'labrobotics/capability': 'liquid-handling'
 
     input:
     plate: Plate

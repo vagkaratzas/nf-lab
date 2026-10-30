@@ -11,7 +11,7 @@ nextflow.enable.types = true
 process QPCR {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'qpcr'
+    hints 'labrobotics/capability': 'qpcr'
 
     input:
     plate: Plate

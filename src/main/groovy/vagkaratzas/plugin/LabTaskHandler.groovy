@@ -5,8 +5,8 @@ import nextflow.executor.local.LocalTaskHandler
 import nextflow.processor.TaskRun
 
 /**
- * A local task whose wrapper starts with the `lab {}` settings and the task's own routing in its
- * environment, for `labctl`: the capability (the `lab/capability` hint), the queue (the `queue`
+ * A local task whose wrapper starts with the `labrobotics {}` settings and the task's own routing in its
+ * environment, for `labctl`: the capability (the `labrobotics/capability` hint), the queue (the `queue`
  * directive) and the Nextflow session. So a wet module names none of them in its script.
  * The launch environment is not written to the work dir and not in the task hash: a new adapter
  * URL or queue doesn't re-run a task (neither did the hint or the queue in the script).
@@ -27,7 +27,7 @@ class LabTaskHandler extends LocalTaskHandler {
      */
     static Map<String,String> taskEnv(Map<String,Object> hints, Object queue, Object session) {
         return [
-            NF_LAB_CAPABILITY: hints?.get('lab/capability')?.toString(),
+            NF_LAB_CAPABILITY: hints?.get('labrobotics/capability')?.toString(),
             NF_LAB_QUEUE: queue?.toString() ?: null,
             NF_LAB_SESSION: session?.toString(),
         ]

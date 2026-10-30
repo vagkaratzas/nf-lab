@@ -13,7 +13,7 @@ params {
 process WET {
     tag "${plate}"
     label 'process_wet'
-    hints 'lab/capability': 'liquid-handling'
+    hints 'labrobotics/capability': 'liquid-handling'
 
     input:
     plate: String

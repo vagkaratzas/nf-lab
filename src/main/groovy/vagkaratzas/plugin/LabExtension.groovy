@@ -26,7 +26,7 @@ import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.PluginExtensionPoint
 
 /**
- * Functions a pipeline imports with `include { labPlate } from 'plugin/nf-lab'`.
+ * Functions a pipeline imports with `include { labPlate } from 'plugin/nf-labrobotics'`.
  */
 @CompileStatic
 class LabExtension extends PluginExtensionPoint {

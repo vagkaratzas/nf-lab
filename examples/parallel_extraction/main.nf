@@ -9,7 +9,7 @@ nextflow.enable.types = true
 include { PARALLEL_EXTRACTION } from '../../wet-modules/subworkflows/parallel_extraction'
 include { YIELD_QC } from './modules/local/yield_qc'
 include { LAB_REPORT } from '../plate_transfer/modules/local/lab_report'
-include { labPlate } from 'plugin/nf-lab'
+include { labPlate } from 'plugin/nf-labrobotics'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,row,column,sample,type

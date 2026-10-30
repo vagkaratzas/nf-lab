@@ -8,7 +8,7 @@ nextflow.enable.types = true
 include { WET } from './subworkflows/local/wet'
 include { ASSAY_REPORT } from './modules/local/assay_report'
 include { LAB_REPORT } from '../plate_transfer/modules/local/lab_report'
-include { labPlate } from 'plugin/nf-lab'
+include { labPlate } from 'plugin/nf-labrobotics'
 
 params {
     plate_map: Channel<Well>  // CSV, one row per filled well: plate,row,column,sample,type

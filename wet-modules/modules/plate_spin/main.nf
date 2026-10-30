@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process PLATE_SPIN {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'centrifugation'
+    hints 'labrobotics/capability': 'centrifugation'
 
     input:
     plate: Plate

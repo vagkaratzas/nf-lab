@@ -1,10 +1,10 @@
-# nf-lab
+# nf-labrobotics
 
 Robotic wet-lab steps in Nextflow pipelines, through a plugin. One pipeline mixes wet steps (a robot transfers a plate, extracts RNA, runs a PCR) and dry ones (analysis), with no change to the Nextflow language. A wet step never runs twice: not on retry, `-resume` or a new launch directory. Aborting a run safe-stops a robot instead of killing it mid-protocol. Each wet task's provenance (device, protocol version, samples) goes into Nextflow lineage.
 
 Prototype, built against PyLabRobot's simulated machines; no real robot needed.
 
-**[Take the tour](https://vagkaratzas.github.io/nf-lab/)**: follow one plate from a pipeline to a simulated robot and back, in your browser. Abort the run, press E-stop, `-resume`.
+**[Take the tour](https://vagkaratzas.github.io/nf-labrobotics/)**: follow one plate from a pipeline to a simulated robot and back, in your browser. Abort the run, press E-stop, `-resume`.
 
 ![A pipeline's wet tasks go through the lab executor and labctl to a device adapter, which holds the robot pool, the lock and the job ledger, and drives the robots through bindings; dry tasks run as usual](docs/images/flow.svg)
 
@@ -23,7 +23,7 @@ Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side*
 
 | Path | What | Guide |
 |---|---|---|
-| `src/` | The Nextflow plugin (Groovy): the `lab` executor, the `lab {}` config scope, the `labPlate` function | this README |
+| `src/` | The Nextflow plugin (Groovy): the `labrobotics` executor, the `labrobotics {}` config scope, the `labPlate` function | this README |
 | `adapter/` | The device adapter (Python, FastAPI, SQLite): the job ledger, robot pool, queues, the deck page for people, the bindings that drive PyLabRobot's simulated machines; `labctl`, the client a wet task runs; `openapi.json`, the contract; the conformance kit | [adapter/README.md](adapter/README.md) |
 | `wet-modules/` | Nextflow modules, one per protocol, nf-core style, and subworkflows that chain them | [wet-modules/README.md](wet-modules/README.md) |
 | `examples/` | Pipelines: `plate_transfer`, `plate_assay` (transfer, then read), `parallel_extraction` (extraction, then PCR), `qpcr` (1000 samples: extraction, then RT-qPCR), `lab_tour` (five routines over every simulated machine); `hello` | their `main.nf` and `nextflow.config` |
@@ -32,12 +32,12 @@ Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side*
 
 ## In a pipeline
 
-A wet step is an ordinary process: label `process_wet`, a capability hint, and a script that runs `labctl run --protocol <name>` (see any module in `wet-modules/modules/`). The pipeline's config sends those processes to the `lab` executor and says how to reach the adapter:
+A wet step is an ordinary process: label `process_wet`, a capability hint, and a script that runs `labctl run --protocol <name>` (see any module in `wet-modules/modules/`). The pipeline's config sends those processes to the `labrobotics` executor and says how to reach the adapter:
 
 ```groovy
-plugins { id 'nf-lab@0.1.0' }
+plugins { id 'nf-labrobotics@0.1.0' }
 
-lab {
+labrobotics {
     adapter = 'http://127.0.0.1:8000'   // unset: $NF_LAB_ADAPTER
     poll = 2.s
     grace = 5.m
@@ -45,7 +45,7 @@ lab {
 
 process {
     withLabel: 'process_wet' {
-        executor = 'lab'
+        executor = 'labrobotics'
         errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }   // 75: nothing moved; 69: adapter unreachable
     }
 }
@@ -147,14 +147,14 @@ nextflow lineage find type=TaskRun sessionId=$SESSION | wc -l
 
 ## FAQ
 
-### I make robots: what do I add so mine works with nf-lab?
+### I make robots: what do I add so mine works with nf-labrobotics?
 
-A pipeline never talks to your robot. Its wet tasks submit jobs to a device adapter over HTTP ([the contract](adapter/README.md#the-contract), `adapter/openapi.json`), and the adapter drives the robot through a **binding**. nf-lab ships no device drivers: control stays with your stack (PyLabRobot, SiLA 2, your own API). What you add depends on how your robot is controlled:
+A pipeline never talks to your robot. Its wet tasks submit jobs to a device adapter over HTTP ([the contract](adapter/README.md#the-contract), `adapter/openapi.json`), and the adapter drives the robot through a **binding**. nf-labrobotics ships no device drivers: control stays with your stack (PyLabRobot, SiLA 2, your own API). What you add depends on how your robot is controlled:
 
-| Your robot | You add | nf-lab changes |
+| Your robot | You add | nf-labrobotics changes |
 |---|---|---|
 | PyLabRobot already drives it | Nothing: the lab picks PyLabRobot's driver and deck for it, and the existing PyLabRobot bindings run their protocols on it | None. Today the bindings in `adapter/src/nf_lab_adapter/bindings/plr/` (one module per machine) run PyLabRobot's simulator (or, where PyLabRobot has none, a simulated backend of ours) on a fixed deck; choosing the driver and deck in lab config is planned |
-| A SiLA 2 server or a vendor API | A binding: a class implementing `Backend` (`adapter/src/nf_lab_adapter/bindings/__init__.py`) | Today, wiring it into `adapter/src/nf_lab_adapter/app.py` (where `NF_LAB_BACKEND` and the capability pick a binding). Planned: bindings as your own Python package, found through an entry point, with no nf-lab change |
+| A SiLA 2 server or a vendor API | A binding: a class implementing `Backend` (`adapter/src/nf_lab_adapter/bindings/__init__.py`) | Today, wiring it into `adapter/src/nf_lab_adapter/app.py` (where `NF_LAB_BACKEND` and the capability pick a binding). Planned: bindings as your own Python package, found through an entry point, with no nf-labrobotics change |
 | Your own scheduler that already keeps jobs | Your own adapter that implements `adapter/openapi.json` | None |
 
 **A binding** implements:
@@ -176,7 +176,7 @@ cd adapter && uv run pytest conformance --adapter http://127.0.0.1:8000 --capabi
 
 The kit checks the HTTP contract and its guarantees ([Conformance kit](adapter/README.md#conformance-kit)). Planned: a smaller kit for a lone binding, and a check that its result matches the protocol's result schema.
 
-**Protocols and pipelines.** A robot that runs protocols that already exist needs no new Nextflow code: the wet modules (in [`wet-modules/`](wet-modules/README.md)) don't know which robot runs them. A new protocol is a new wet module, one per protocol, named after it: it calls `labctl run --protocol <name> --protocol-version <x.y>` and declares `hints 'lab/capability': '<capability>'`. A new kind of machine (e.g. a thermocycler) is a new capability name, used by both the module and your binding.
+**Protocols and pipelines.** A robot that runs protocols that already exist needs no new Nextflow code: the wet modules (in [`wet-modules/`](wet-modules/README.md)) don't know which robot runs them. A new protocol is a new wet module, one per protocol, named after it: it calls `labctl run --protocol <name> --protocol-version <x.y>` and declares `hints 'labrobotics/capability': '<capability>'`. A new kind of machine (e.g. a thermocycler) is a new capability name, used by both the module and your binding.
 
 **What the lab sets, not you:** which robots it has, their capability and queue (`NF_LAB_DEVICES=capability[/queue]:count`, see [Start it](adapter/README.md#start-it)), and its deck and labware layout.
 
@@ -204,4 +204,4 @@ The end-to-end checks run the `validation/` pipeline against a simulated device 
 
 ## Publishing
 
-Not published to the Nextflow plugin registry yet. `make install` puts the plugin in `~/.nextflow/plugins/nf-lab-0.1.0`, and `id 'nf-lab@0.1.0'` loads it from there. To publish: set your registry token as `npr.apiKey` in `$HOME/.gradle/gradle.properties` or as `NPR_API_KEY` in the environment, then `make release`. Never commit it.
+Not published to the Nextflow plugin registry yet. `make install` puts the plugin in `~/.nextflow/plugins/nf-labrobotics-0.1.0`, and `id 'nf-labrobotics@0.1.0'` loads it from there. To publish: set your registry token as `npr.apiKey` in `$HOME/.gradle/gradle.properties` or as `NPR_API_KEY` in the environment, then `make release`. Never commit it.

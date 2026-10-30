@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process PLATE_UNSEAL {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'peeling'
+    hints 'labrobotics/capability': 'peeling'
 
     input:
     plate: Plate

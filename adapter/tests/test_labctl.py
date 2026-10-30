@@ -158,7 +158,7 @@ def test_unreachable_adapter_exits_69_and_the_retry_asks_the_ledger(tmp_path):
 
 
 def test_grace_defaults_to_the_environment(tmp_path):
-    # the lab executor sets NF_LAB_GRACE from `lab.grace`; without it labctl would wait 300 s here
+    # the lab executor sets NF_LAB_GRACE from `labrobotics.grace`; without it labctl would wait 300 s here
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         dead = f"http://127.0.0.1:{s.getsockname()[1]}"

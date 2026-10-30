@@ -48,7 +48,7 @@ class Settings:
     nextflow: list[str] = field(default_factory=lambda: [os.environ.get("NXF_CMD", "nextflow")])
     beat: float = 5.0  # wait before each person step, and the least a narration stays up: time to follow
     tick: float = 0.5  # how often the person looks at the decks
-    runs: Path | None = None  # one folder per scenario (ledger, logs, results); default nf-lab/build/demo
+    runs: Path | None = None  # one folder per scenario (ledger, logs, results); default nf-labrobotics/build/demo
 
 
 def auth() -> dict:

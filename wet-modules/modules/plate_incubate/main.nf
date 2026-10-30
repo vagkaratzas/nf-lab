@@ -11,7 +11,7 @@ nextflow.enable.types = true
 process PLATE_INCUBATE {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'incubation'
+    hints 'labrobotics/capability': 'incubation'
 
     input:
     plate: Plate

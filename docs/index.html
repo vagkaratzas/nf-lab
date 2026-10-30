@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nf-lab: a plate's journey</title>
-<meta name="description" content="An interactive guide to nf-lab: follow one plate from a Nextflow pipeline through the lab executor, labctl and the device adapter to a simulated robot, and back into lineage.">
-<meta property="og:title" content="nf-lab: a plate's journey">
+<title>nf-labrobotics: a plate's journey</title>
+<meta name="description" content="An interactive guide to nf-labrobotics: follow one plate from a Nextflow pipeline through the lab executor, labctl and the device adapter to a simulated robot, and back into lineage.">
+<meta property="og:title" content="nf-labrobotics: a plate's journey">
 <meta property="og:description" content="Robotic wet-lab steps in Nextflow pipelines. Follow one plate from the pipeline to the robot and back.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 24'%3E%3Crect x='1' y='1' width='32' height='22' rx='4' fill='%2317282F' stroke='%230DC09D' stroke-width='2'/%3E%3Cg fill='%230DC09D'%3E%3Ccircle cx='9' cy='8' r='2.4'/%3E%3Ccircle cx='17' cy='8' r='2.4'/%3E%3Ccircle cx='25' cy='8' r='2.4'/%3E%3Ccircle cx='9' cy='16' r='2.4'/%3E%3Ccircle cx='17' cy='16' r='2.4' fill='%23E5577E'/%3E%3Ccircle cx='25' cy='16' r='2.4'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,25 +19,25 @@
   <header class="top">
     <a class="brand" href="#">
       <svg viewBox="0 0 34 24" aria-hidden="true"><rect x="1" y="1" width="32" height="22" rx="4" fill="#17282F" stroke="#0DC09D" stroke-width="2"/><g fill="#0DC09D"><circle cx="9" cy="8" r="2.4"/><circle cx="17" cy="8" r="2.4"/><circle cx="25" cy="8" r="2.4"/><circle cx="9" cy="16" r="2.4"/><circle cx="17" cy="16" r="2.4" fill="#E5577E"/><circle cx="25" cy="16" r="2.4"/></g></svg>
-      nf-lab
+      nf-labrobotics
     </a>
     <nav>
       <a href="#tour">Tour</a>
       <a href="#run-it">Run it</a>
-      <a href="https://github.com/vagkaratzas/nf-lab#readme">Docs</a>
-      <a href="https://github.com/vagkaratzas/nf-lab">GitHub</a>
+      <a href="https://github.com/vagkaratzas/nf-labrobotics#readme">Docs</a>
+      <a href="https://github.com/vagkaratzas/nf-labrobotics">GitHub</a>
     </nav>
   </header>
 
   <section class="hero">
     <p class="eyebrow">A Nextflow plugin · prototype</p>
     <h1>Follow a plate from <em>Nextflow</em> to the <span class="lab">robot</span>, and back.</h1>
-    <p class="lead">nf-lab puts robotic wet-lab steps in Nextflow pipelines, with no change to the language. A wet step never runs twice, an aborted run stops a robot safely, and every plate's provenance lands in Nextflow lineage. Press <b>Next</b>, or click any station, to send plate Q01 down the line.</p>
+    <p class="lead">nf-labrobotics puts robotic wet-lab steps in Nextflow pipelines, with no change to the language. A wet step never runs twice, an aborted run stops a robot safely, and every plate's provenance lands in Nextflow lineage. Press <b>Next</b>, or click any station, to send plate Q01 down the line.</p>
     <details class="about">
       <summary>What's real on this page</summary>
       <ul>
-        <li><b>Computed here, as nf-lab computes it:</b> plate Q01's map (from <code>examples/qpcr/plate_map.csv</code>), its idempotency key (SHA-256, as <code>labctl</code> builds it) and each well's Ct (as the simulated qPCR instrument gives it).</li>
-        <li><b>Simulated, like nf-lab's own demos:</b> the robots. nf-lab runs against PyLabRobot's simulated machines; no robot is needed.</li>
+        <li><b>Computed here, as nf-labrobotics computes it:</b> plate Q01's map (from <code>examples/qpcr/plate_map.csv</code>), its idempotency key (SHA-256, as <code>labctl</code> builds it) and each well's Ct (as the simulated qPCR instrument gives it).</li>
+        <li><b>Simulated, like nf-labrobotics's own demos:</b> the robots. nf-labrobotics runs against PyLabRobot's simulated machines; no robot is needed.</li>
         <li><b>Illustrative:</b> timings (a qPCR run takes about 1.5 hours, here a few seconds), task hashes, job IDs and the other plates in the pool.</li>
       </ul>
     </details>
@@ -83,7 +83,7 @@
     <h2>Run it yourself</h2>
     <p>Everything above runs on your machine against simulated robots. You need Java 17, <a href="https://docs.astral.sh/uv/">uv</a> and Nextflow 26.10.0 or later.</p>
     <div class="quick">
-<pre><code>git clone https://github.com/vagkaratzas/nf-lab && cd nf-lab
+<pre><code>git clone https://github.com/vagkaratzas/nf-labrobotics && cd nf-labrobotics
 make install          # builds the plugin into ~/.nextflow/plugins
 cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</code></pre>
     </div>
@@ -91,18 +91,18 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
     <div class="cols">
       <div class="card">
         <h3>Writing pipelines</h3>
-        <p>Wet steps are ordinary processes. Take a wet module, give it a plate record, send <code>process_wet</code> to the <code>lab</code> executor.</p>
-        <a href="https://github.com/vagkaratzas/nf-lab/blob/main/wet-modules/README.md">Wet modules →</a>
+        <p>Wet steps are ordinary processes. Take a wet module, give it a plate record, send <code>process_wet</code> to the <code>labrobotics</code> executor.</p>
+        <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/wet-modules/README.md">Wet modules →</a>
       </div>
       <div class="card">
         <h3>Running a lab</h3>
         <p>Start the device adapter, list your robots in pools, set your limits for protocol parameters, keep the deck page open at the bench.</p>
-        <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md">Device adapter →</a>
+        <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md">Device adapter →</a>
       </div>
       <div class="card">
         <h3>Making robots</h3>
         <p>If PyLabRobot drives it, nothing to add. Otherwise write a binding, or your own adapter for <code>openapi.json</code>, and prove it with the conformance kit.</p>
-        <a href="https://github.com/vagkaratzas/nf-lab#i-make-robots-what-do-i-add-so-mine-works-with-nf-lab">For robot makers →</a>
+        <a href="https://github.com/vagkaratzas/nf-labrobotics#i-make-robots-what-do-i-add-so-mine-works-with-nf-labrobotics">For robot makers →</a>
       </div>
     </div>
   </section>
@@ -110,8 +110,8 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
 
 <footer>
   <div class="wrap">
-    <span>nf-lab · Apache-2.0 · built on <a href="https://www.nextflow.io/">Nextflow</a> and <a href="https://github.com/PyLabRobot/pylabrobot">PyLabRobot</a></span>
-    <a href="https://github.com/vagkaratzas/nf-lab">github.com/vagkaratzas/nf-lab</a>
+    <span>nf-labrobotics · Apache-2.0 · built on <a href="https://www.nextflow.io/">Nextflow</a> and <a href="https://github.com/PyLabRobot/pylabrobot">PyLabRobot</a></span>
+    <a href="https://github.com/vagkaratzas/nf-labrobotics">github.com/vagkaratzas/nf-labrobotics</a>
   </div>
 </footer>
 
@@ -122,7 +122,7 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
   <p class="kicker">Before the run</p>
   <h2>One plate, fourteen stations</h2>
   <p class="sub">From a Nextflow pipeline, through the lab, and back into lineage.</p>
-  <p>The left half of the line is Nextflow: your pipeline, a wet module, the <code>lab</code> executor and <code>labctl</code>. The right half is the lab: the device adapter, its ledger and pools, the person at the bench, and the robots. Between them, one HTTP contract.</p>
+  <p>The left half of the line is Nextflow: your pipeline, a wet module, the <code>labrobotics</code> executor and <code>labctl</code>. The right half is the lab: the device adapter, its ledger and pools, the person at the bench, and the robots. Between them, one HTTP contract.</p>
   <p>Plate Q01 waits at the start. Press <b>Start</b>, or <b>Play tour</b> to let it ride on its own.</p>
 </template>
 
@@ -137,8 +137,8 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
     .groupBy()
     .map { plate, wells -&gt; record(id: plate, wells: wells.toSorted { a, b -&gt; a.row &lt;=&gt; b.row ?: a.column &lt;=&gt; b.column }) }
 wet = RT_QPCR(plates)</code></pre>
-  <p>Our plate is <b>Q01</b>, and the tour picks it up after its extraction, at the qPCR step. The plugin is one line in the config: <code>plugins { id 'nf-lab@0.1.0' }</code>.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/examples/qpcr/main.nf">examples/qpcr/main.nf</a> · <a href="https://github.com/vagkaratzas/nf-lab/blob/main/wet-modules/subworkflows/rt_qpcr/main.nf">the RT_QPCR subworkflow</a></p>
+  <p>Our plate is <b>Q01</b>, and the tour picks it up after its extraction, at the qPCR step. The plugin is one line in the config: <code>plugins { id 'nf-labrobotics@0.1.0' }</code>.</p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/examples/qpcr/main.nf">examples/qpcr/main.nf</a> · <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/wet-modules/subworkflows/rt_qpcr/main.nf">the RT_QPCR subworkflow</a></p>
 </template>
 
 <template id="st-2">
@@ -149,7 +149,7 @@ wet = RT_QPCR(plates)</code></pre>
 <pre><code>process QPCR {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'qpcr'
+    hints 'labrobotics/capability': 'qpcr'
 
     input:
     plate: Plate
@@ -164,18 +164,18 @@ wet = RT_QPCR(plates)</code></pre>
         --plate ${plate.id} --wells ${wells} --params - ...
     """
 }</code></pre>
-  <p>nf-lab ships 19 wet modules and 6 subworkflows, nf-core style, each with nf-tests: transfers, extractions, PCR and qPCR, reads, spins, seals, incubations. <code>ext.params</code> sets a protocol's parameters, e.g. <code>withName: 'QPCR' { ext.params = [cycles: 45, channel: 'HEX'] }</code>.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/wet-modules/README.md">wet-modules/README.md</a></p>
+  <p>nf-labrobotics ships 19 wet modules and 6 subworkflows, nf-core style, each with nf-tests: transfers, extractions, PCR and qPCR, reads, spins, seals, incubations. <code>ext.params</code> sets a protocol's parameters, e.g. <code>withName: 'QPCR' { ext.params = [cycles: 45, channel: 'HEX'] }</code>.</p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/wet-modules/README.md">wet-modules/README.md</a></p>
 </template>
 
 <template id="st-3">
   <p class="kicker">Station 3 · Nextflow</p>
   <h2>The lab executor</h2>
   <p class="sub">Wet tasks go to the lab, not to the cluster.</p>
-  <p>The plugin adds an executor named <code>lab</code>. It runs each wet task where Nextflow runs, like the local executor: the task is <code>labctl</code> waiting on the lab. It also hands the task its routing: the <code>lab/capability</code> hint, the <code>queue</code> directive and the run's session become <code>NF_LAB_CAPABILITY</code>, <code>NF_LAB_QUEUE</code> and <code>NF_LAB_SESSION</code>. The adapter address, poll interval and grace period come from the <code>lab {}</code> scope.</p>
-<pre><code>plugins { id 'nf-lab@0.1.0' }
+  <p>The plugin adds an executor named <code>labrobotics</code>. It runs each wet task where Nextflow runs, like the local executor: the task is <code>labctl</code> waiting on the lab. It also hands the task its routing: the <code>labrobotics/capability</code> hint, the <code>queue</code> directive and the run's session become <code>NF_LAB_CAPABILITY</code>, <code>NF_LAB_QUEUE</code> and <code>NF_LAB_SESSION</code>. The adapter address, poll interval and grace period come from the <code>labrobotics {}</code> scope.</p>
+<pre><code>plugins { id 'nf-labrobotics@0.1.0' }
 
-lab {
+labrobotics {
     adapter = 'http://127.0.0.1:8000'   // unset: $NF_LAB_ADAPTER
     poll = 2.s
     grace = 5.m
@@ -184,13 +184,13 @@ lab {
 process {
     errorStrategy = 'finish'
     withLabel: 'process_wet' {
-        executor = 'lab'
+        executor = 'labrobotics'
         errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }
     }
 }</code></pre>
   <div class="guarantee"><b>Retry only what is safe</b> Exit 75 means nothing moved; 69 that the adapter couldn't be reached. Both retry, and the ledger answers the retry with the same job. Any other failure ends the run with <code>finish</code>: robots already busy finish their plates, and nothing new starts.</div>
   <p>Dry tasks keep their own executor, HPC or cloud, in the same run.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab#in-a-pipeline">In a pipeline</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics#in-a-pipeline">In a pipeline</a></p>
 </template>
 
 <template id="st-4">
@@ -215,7 +215,7 @@ process {
       <tr><td><code>143</code></td><td>The run was aborted (TERM)</td><td><code>safe_stop</code> sent; the ledger keeps the outcome</td></tr>
     </tbody>
   </table></div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#from-a-pipeline">From a pipeline</a> · <code>labctl --help</code></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#from-a-pipeline">From a pipeline</a> · <code>labctl --help</code></p>
 </template>
 
 <template id="st-5">
@@ -231,7 +231,7 @@ POST /jobs/{job_id}/release    <span class="c">release: the plate is off the dec
 GET  /jobs?session=...         <span class="c">session_jobs: for the lab report</span></code></pre>
   <p>The <b>conformance kit</b> checks any adapter against the file: one key is one job, one job at a time per device, a safe stop never repeats material work, release only after the job finishes.</p>
   <div class="guarantee"><b>The token</b> With <code>NF_LAB_TOKEN</code> set, every call needs it as a bearer token. A pipeline keeps it as a Nextflow secret, so it never lands in a work dir or a log.</div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#the-contract">The contract</a> · <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#the-token">The token</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#the-contract">The contract</a> · <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#the-token">The token</a></p>
 </template>
 
 <template id="st-6">
@@ -247,7 +247,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
   <div class="table-scroll" data-slot="ledger"></div>
   <p>Before queuing, the adapter resolves the job's <b>program</b>: the binding's defaults, then the lab's limits file, then the params asked for. An unknown param, a wrong type or a value out of range is refused (422) and nothing is queued, so a typo never runs at the default.</p>
   <p>The ledger also records which Nextflow task collected each job, by task hash. That hash is also the task's lineage ID.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#protocol-parameters">Protocol parameters</a> · <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#a-plates-life">A plate's life</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#protocol-parameters">Protocol parameters</a> · <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#a-plates-life">A plate's life</a></p>
 </template>
 
 <template id="st-7">
@@ -257,7 +257,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
   <p>The job names <code>qpcr</code>, not a device. It waits in one queue shared by every qPCR instrument, and the free one whose deck holds the plate takes it, one job at a time. The lab, not the pipeline, says what it has; this demo runs <code>NF_LAB_DEVICES=liquid-handling:4,qpcr:6</code>. A queue narrows a pool further: <code>liquid-handling/opentrons:2</code> is a sub-pool that Nextflow's <code>queue</code> directive can ask for.</p>
   <div class="guarantee lab"><b>Free is not ready</b> A free robot has no job. A ready robot also has the right plate on its deck, checked by a person. The lock lives in the ledger, so it survives an adapter restart.</div>
   <p>Above the belt: the qPCR pool as the deck page shows it. The other plates of the run keep five robots busy; Q01 waits for a person to load it on <code>qpcr-1</code>.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#which-robots-are-free-and-which-are-ready">Free and ready</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#which-robots-are-free-and-which-are-ready">Free and ready</a></p>
 </template>
 
 <template id="st-8">
@@ -280,14 +280,14 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
       <tr><td><span class="status needs_person">needs_person</span></td><td>Check the deck, press Succeeded or Failed, then Unload</td></tr>
     </tbody>
   </table></div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#a-plates-life">A plate's life</a> · <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#when-a-job-fails">When a job fails</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#a-plates-life">A plate's life</a> · <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#when-a-job-fails">When a job fails</a></p>
 </template>
 
 <template id="st-9">
   <p class="kicker">Station 9 · The lab</p>
   <h2>A binding</h2>
-  <p class="sub">Where nf-lab stops and robot control begins.</p>
-  <p>nf-lab ships no device drivers. The adapter drives each robot through a binding, a small class over the lab's own control stack: PyLabRobot, SiLA 2 or a vendor API. Today's bindings run PyLabRobot 0.2.2's simulated machines: liquid handlers, plate readers, thermocyclers, centrifuges, incubators and more.</p>
+  <p class="sub">Where nf-labrobotics stops and robot control begins.</p>
+  <p>nf-labrobotics ships no device drivers. The adapter drives each robot through a binding, a small class over the lab's own control stack: PyLabRobot, SiLA 2 or a vendor API. Today's bindings run PyLabRobot 0.2.2's simulated machines: liquid handlers, plate readers, thermocyclers, centrifuges, incubators and more.</p>
 <pre><code><span class="k">class</span> Backend(Protocol):
     PROTOCOLS: set[str]   <span class="c"># the protocols this binding runs</span>
     viewer: str | None    <span class="c"># URL of a live view of the deck</span>
@@ -298,7 +298,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
     <span class="k">async def</span> read_result(self, job: Job) -&gt; dict: ...</code></pre>
   <p><code>run</code> reports through <code>progress</code> the job's state and whether it's still safe to stop. The binding never deals with retries, <code>-resume</code> or two pipelines wanting one robot: the adapter keeps all of that.</p>
   <div class="guarantee lab"><b>Prove it</b> <code>uv run pytest conformance --adapter http://127.0.0.1:8000 --capability &lt;yours&gt;</code> checks an adapter that uses your binding. Use a simulator, never a robot a lab is using: the kit submits real jobs.</div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab#i-make-robots-what-do-i-add-so-mine-works-with-nf-lab">I make robots: what do I add?</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics#i-make-robots-what-do-i-add-so-mine-works-with-nf-labrobotics">I make robots: what do I add?</a></p>
 </template>
 
 <template id="st-10">
@@ -320,7 +320,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
   <div class="try" data-when="retryable">
     <button class="btn primary" data-action="resume">Rerun with -resume</button>
   </div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#when-a-job-fails">When a job fails</a> · <a href="https://github.com/vagkaratzas/nf-lab/blob/main/wet-modules/modules/qpcr/main.nf">the QPCR module</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#when-a-job-fails">When a job fails</a> · <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/wet-modules/modules/qpcr/main.nf">the QPCR module</a></p>
 </template>
 
 <template id="st-11">
@@ -331,10 +331,10 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
   <p>labctl sees <code>done</code>. From the ledger it writes <code>result.json</code>, each well's Ct (<code>null</code> when undetermined), and <code>provenance.json</code>: the device, the job, its attempt and the program as it ran. It exits 0, and Nextflow's task is done.</p>
   <p>The physical plate stays on qpcr-1, holding it, until a person presses Unload. labctl never releases a robot.</p>
   <p>In the workflow, the plugin's <code>labPlate</code> function turns the two files into plain data:</p>
-<pre><code><span class="k">include</span> { labPlate } <span class="k">from</span> <span class="s">'plugin/nf-lab'</span>
+<pre><code><span class="k">include</span> { labPlate } <span class="k">from</span> <span class="s">'plugin/nf-labrobotics'</span>
 
 <span class="k">def</span> qpcr = labPlate(q.provenance, q.result)   <span class="c">// device_id, job_id, attempt, ... plus plate and wells, each with its ct</span></code></pre>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#from-a-pipeline">From a pipeline</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#from-a-pipeline">From a pipeline</a></p>
 </template>
 
 <template id="st-12">
@@ -348,7 +348,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
 <span class="k">def</span> call = !ok ? <span class="s">'invalid_plate'</span> : (w.ct != null &amp;&amp; w.ct &lt; maxCt ? <span class="s">'detected'</span> : <span class="s">'not_detected'</span>)</code></pre>
   <p class="try-out" data-bind="calls"></p>
   <p>Here the calls are a function in the workflow. A heavier analysis is a process like any other, on your HPC or cloud executor, in the same run. Give dry processes <code>errorStrategy = 'finish'</code> too, so a software error never stops a robot mid-plate.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/examples/qpcr/main.nf">examples/qpcr/main.nf</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/examples/qpcr/main.nf">examples/qpcr/main.nf</a></p>
 </template>
 
 <template id="st-13">
@@ -359,7 +359,7 @@ GET  /jobs?session=...         <span class="c">session_jobs: for the lab report<
   <div class="table-scroll" data-slot="report"></div>
   <p>Lineage records only the attempt that worked; the report keeps the ones that didn't, with the reason. A run and its <code>-resume</code>s share a session, so the run that completes reports the attempts of the runs that failed before it.</p>
   <p>Meanwhile, at the bench, someone takes Q01 off and presses Unload: qpcr-1 is free for the next plate.</p>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab/blob/main/adapter/README.md#the-lab-report">The lab report</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/adapter/README.md#the-lab-report">The lab report</a></p>
 </template>
 
 <template id="st-14">
@@ -376,7 +376,7 @@ sqlite3 ledger.sqlite "SELECT task_hash FROM collections JOIN jobs USING (job_id
                        WHERE device_id = 'qpcr-1' AND state = 'done'"</code></pre>
   <p>Next, the belt loops back to the start: the same run again with <code>-resume</code>. Watch what doesn't happen.</p>
   <div class="try"><button class="btn primary" data-action="next">Run it again with -resume →</button></div>
-  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-lab#questions-lineage-answers">Questions lineage answers</a></p>
+  <p class="more">Read more: <a href="https://github.com/vagkaratzas/nf-labrobotics#questions-lineage-answers">Questions lineage answers</a></p>
 </template>
 
 <script src="assets/guide.js"></script>

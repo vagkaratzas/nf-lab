@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the wet modules' nf-tests against a fake-backend adapter started here (port 8190, a throwaway
-# ledger). Needs `make install` (the nf-lab plugin) and `uv sync` in adapter/. Arguments go to nf-test.
+# ledger). Needs `make install` (the nf-labrobotics plugin) and `uv sync` in adapter/. Arguments go to nf-test.
 #   wet-modules/tests/run.sh [nf-test test args: a path, --tag, --update-snapshot; default: everything]
 set -euo pipefail
 cd "$(dirname "$0")/.."

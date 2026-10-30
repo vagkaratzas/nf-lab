@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process POWDER_DISPENSE {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'powder-dispensing'
+    hints 'labrobotics/capability': 'powder-dispensing'
 
     input:
     plate: Plate

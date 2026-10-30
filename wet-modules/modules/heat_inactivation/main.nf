@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process HEAT_INACTIVATION {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'temperature-control'
+    hints 'labrobotics/capability': 'temperature-control'
 
     input:
     plate: Plate

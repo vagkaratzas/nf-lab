@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: plate_scan
 description: "Read a plate's barcode and check it is the job's plate"
 keywords: [wet-lab, barcode-reading, plate_scan]
 lab:
-  capability: barcode-reading  # the hint the module declares (hints 'lab/capability')
+  capability: barcode-reading  # the hint the module declares (hints 'labrobotics/capability')
   protocol: plate_scan
   protocol_version: "1.0"
   stop_boundary: "none (changes nothing; a failed scan is retryable)"

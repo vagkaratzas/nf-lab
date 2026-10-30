@@ -4,7 +4,7 @@ Nextflow modules for lab protocols, nf-core style. Nextflow only: no Python, no 
 
 ```
 modules/<protocol>/
-    main.nf               one process: `labctl run --protocol <protocol>`; hints 'lab/capability'
+    main.nf               one process: `labctl run --protocol <protocol>`; hints 'labrobotics/capability'
     meta.yml              nf-core meta.yml, plus `lab:` (capability, protocol, protocol_version, stop_boundary, params)
     input.schema.json     the protocol's params (names, types, units), set with `ext.params`
     result.schema.json    the result.json every binding of this protocol returns
@@ -37,7 +37,7 @@ The module passes the map to `labctl` as is, and the lab's adapter checks it: an
 - **The machine's limits and defaults**, in the binding: `PARAMS` in `adapter/src/nf_lab_adapter/bindings/__init__.py` (for the simulated machines: the centrifuge's 10–4000 × g, the incubator's 4–50 °C, ...). A binding for real machines carries its own.
 - **The lab's own**, in a TOML file the adapter reads at start (`NF_LAB_LIMITS=/path/limits.toml`): per protocol and param, `min`, `max`, `choices` (for strings), `default` and `fixed` (any other value is refused). It can only narrow the machine's limits; a value outside them, or a typo in a protocol or param name, stops the adapter at start. For example `[plate_spin.g]` `max = 500.0` for a smaller rotor, or `[plate_incubate.temperature]` `fixed = 37.0`. The format and an example are in `adapter/README.md` › Protocol parameters.
 
-**Using a module.** `include { PLATE_READ } from '<path to>/wet-modules/modules/plate_read'`. The pipeline needs `labctl` on the task's `PATH` (the examples symlink it in their `bin/`) and `process_wet` config (the examples' `nextflow.config`). The `lab` executor (`process_wet`) hands `labctl` the task's capability (from its `hints`), its queue and the run's session, so a module's script names only its protocol, version, plate, wells and params.
+**Using a module.** `include { PLATE_READ } from '<path to>/wet-modules/modules/plate_read'`. The pipeline needs `labctl` on the task's `PATH` (the examples symlink it in their `bin/`) and `process_wet` config (the examples' `nextflow.config`). The `labrobotics` executor (`process_wet`) hands `labctl` the task's capability (from its `hints`), its queue and the run's session, so a module's script names only its protocol, version, plate, wells and params.
 
 | Module | Capability | Protocol | Stop boundary |
 |---|---|---|---|
@@ -73,7 +73,7 @@ The module passes the map to `labctl` as is, and the lab's adapter checks it: an
 **Tests.** nf-tests per module (`modules/<protocol>/tests/main.nf.test` and its `.snap`), as in nf-core/modules: run the process on a small plate, assert it succeeded and the provenance says `done`, snapshot the parsed `result.json`; then again with `ext.params` from the test's `params.config`, checking the program ran; `plate_spin`, `plate_weigh` and `plate_scan` also check that an unknown param (`refused.config`) fails the task. The subworkflow's test is a `nextflow_pipeline` over a small typed script (`tests/main.nf`), because nf-test's generated workflow script is untyped and can't pass the typed channel the subworkflow needs; it snapshots the sorted names of the tasks that succeeded. Provenance and log hold device IDs and times, so they're only checked for what the module promises. No `-profile`: the module's tool is `labctl`, so no conda or container. The tests need a device adapter, so `tests/run.sh` starts a fake one on :8190 with a throwaway ledger, puts `labctl` on `PATH` and runs nf-test; its arguments go to `nf-test test`:
 
 ```bash
-make install                      # once: the nf-lab plugin (Java 17)
+make install                      # once: the nf-labrobotics plugin (Java 17)
 (cd adapter && uv sync)           # once
 export NXF_VER=26.10.2            # nf-test from PATH, or set NF_TEST=/path/to/nf-test
 wet-modules/tests/run.sh                          # every module and subworkflow (about 5 min)

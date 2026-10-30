@@ -12,9 +12,9 @@ import nextflow.util.Duration
  * NF_LAB_* environment variables; an unset one falls back to the launch shell's.
  * The lab's settings (robots, ledger, backend) stay with the adapter.
  */
-@ScopeName('lab')
+@ScopeName('labrobotics')
 @Description('''
-    The `lab` scope sets how this run's wet tasks reach the lab's device adapter.
+    The `labrobotics` scope sets how this run's wet tasks reach the lab's device adapter.
 ''')
 @CompileStatic
 class LabConfig implements ConfigScope {

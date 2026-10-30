@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: pcr
 description: "Run a PCR plate through a fixed PCR program on a thermocycler"
 keywords: [wet-lab, thermocycling, pcr]
 lab:
-  capability: thermocycling  # the hint the module declares (hints 'lab/capability')
+  capability: thermocycling  # the hint the module declares (hints 'labrobotics/capability')
   protocol: pcr
   protocol_version: "1.0"
   stop_boundary: "cycling starts (lid closed, plate untouched before)"
