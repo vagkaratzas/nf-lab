@@ -11,7 +11,7 @@ nextflow.enable.types = true
 process PLATE_TRANSFER {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'liquid-handling'
+    hints 'labrobotics/capability': 'liquid-handling'
 
     input:
     plate: Plate

@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: plate_incubate
 description: "Hold a plate in an incubator at a fixed temperature to grow or hold the samples in each plate-map well"
 keywords: [wet-lab, incubation, plate_incubate]
 lab:
-  capability: incubation  # the hint the module declares (hints 'lab/capability')
+  capability: incubation  # the hint the module declares (hints 'labrobotics/capability')
   protocol: plate_incubate
   protocol_version: "1.0"
   stop_boundary: "the plate is taken in from the loading tray (incubator preheated before)"

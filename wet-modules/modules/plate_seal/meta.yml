@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: plate_seal
 description: "Heat-seal a foil onto a plate"
 keywords: [wet-lab, sealing, plate_seal]
 lab:
-  capability: sealing  # the hint the module declares (hints 'lab/capability')
+  capability: sealing  # the hint the module declares (hints 'labrobotics/capability')
   protocol: plate_seal
   protocol_version: "1.0"
   stop_boundary: "the seal starts (plate untouched before)"

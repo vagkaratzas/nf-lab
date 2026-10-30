@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process PCR {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'thermocycling'
+    hints 'labrobotics/capability': 'thermocycling'
 
     input:
     plate: Plate

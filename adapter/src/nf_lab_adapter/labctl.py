@@ -27,9 +27,9 @@ and runs nothing. labctl never releases the device: the person who unloads the
 plate does (or the adapter's simulated operator).
 
 Defaults for --adapter, --poll and --grace come from NF_LAB_ADAPTER, NF_LAB_POLL and
-NF_LAB_GRACE: the lab executor sets them from the pipeline's `lab {}` config scope. Defaults
+NF_LAB_GRACE: the lab executor sets them from the pipeline's `labrobotics {}` config scope. Defaults
 for --capability, --queue and --session come from NF_LAB_CAPABILITY, NF_LAB_QUEUE and
-NF_LAB_SESSION: the lab executor sets them per task, from its lab/capability hint, its queue
+NF_LAB_SESSION: the lab executor sets them per task, from its labrobotics/capability hint, its queue
 directive and the run's session. A flag always wins.
 
 NF_LAB_TOKEN, if set, goes with every request as a bearer token (an adapter that
@@ -277,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="submit (or find) a job and wait for it")
     r.add_argument("--capability", default=os.environ.get("NF_LAB_CAPABILITY") or None,
                    help="what the job needs (default: NF_LAB_CAPABILITY, which the lab executor sets from the "
-                        "task's lab/capability hint)")
+                        "task's labrobotics/capability hint)")
     r.add_argument("--queue", default=os.environ.get("NF_LAB_QUEUE") or None,
                    help="only this queue's devices may take the job (default: NF_LAB_QUEUE, which the lab "
                         "executor sets from the task's queue directive); not part of the key")
@@ -311,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     if args.cmd == "run" and not args.capability:
         p.error("run: no capability: pass --capability, or run it as a task of the lab executor "
-                "(which sets NF_LAB_CAPABILITY from the task's lab/capability hint)")
+                "(which sets NF_LAB_CAPABILITY from the task's labrobotics/capability hint)")
     return args.func(args)
 
 

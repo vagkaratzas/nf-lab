@@ -1,9 +1,9 @@
-# Criterion: the `lab {}` config scope reaches labctl through the lab executor and wins over
+# Criterion: the `labrobotics {}` config scope reaches labctl through the lab executor and wins over
 # the launch shell's NF_LAB_* (which every other check relies on when the scope is unset).
 start_adapter
 dead=http://127.0.0.1:9  # nobody listens
 cat > lab.config <<CONFIG
-lab {
+labrobotics {
     adapter = '$NF_LAB_ADAPTER'
 }
 CONFIG
@@ -11,7 +11,7 @@ NF_LAB_ADAPTER=$dead nf -c lab.config --plates 1
 [[ $(sql "SELECT count(*) FROM jobs WHERE state = 'done'") == 1 ]]
 # grace: an unreachable adapter exits 69 after 1 s, not labctl's default 5 min (three attempts; one plate, since a second plate's pending retry is dropped once the first gives up)
 cat > dead.config <<CONFIG
-lab {
+labrobotics {
     adapter = '$dead'
     grace = 1.s
 }

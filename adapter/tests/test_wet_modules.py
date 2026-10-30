@@ -30,7 +30,7 @@ def test_meta_script_and_schema_agree(protocol):
     lab, script = meta(protocol), (MODULES / protocol / "main.nf").read_text()
     assert lab["protocol"] == protocol
     assert f"--protocol {protocol} " in script
-    assert f"hints 'lab/capability': '{lab['capability']}'" in script
+    assert f"hints 'labrobotics/capability': '{lab['capability']}'" in script
     assert "--params - <<'JSON'" in script and "JsonOutput.toJson(task.ext.params)" in script  # every param reaches the adapter
     assert "--capability" not in script and "--session" not in script  # the lab executor hands labctl both, from the hint
     Draft202012Validator.check_schema(json.loads((MODULES / protocol / "result.schema.json").read_text()))

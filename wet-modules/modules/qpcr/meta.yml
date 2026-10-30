@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: qpcr
 description: "Run an RNA plate through a fixed one-step RT-qPCR program on a real-time PCR instrument: a Ct per well"
 keywords: [wet-lab, qpcr, rt-qpcr, ct]
 lab:
-  capability: qpcr  # the hint the module declares (hints 'lab/capability')
+  capability: qpcr  # the hint the module declares (hints 'labrobotics/capability')
   protocol: qpcr
   protocol_version: "1.0"
   stop_boundary: "cycling starts (lid closed, plate untouched before)"

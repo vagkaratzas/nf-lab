@@ -23,7 +23,7 @@ Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side*
 
 | Path | What | Guide |
 |---|---|---|
-| `src/` | The Nextflow plugin (Groovy): the `lab` executor, the `lab {}` config scope, the `labPlate` function | this README |
+| `src/` | The Nextflow plugin (Groovy): the `labrobotics` executor, the `labrobotics {}` config scope, the `labPlate` function | this README |
 | `adapter/` | The device adapter (Python, FastAPI, SQLite): the job ledger, robot pool, queues, the deck page for people, the bindings that drive PyLabRobot's simulated machines; `labctl`, the client a wet task runs; `openapi.json`, the contract; the conformance kit | [adapter/README.md](adapter/README.md) |
 | `wet-modules/` | Nextflow modules, one per protocol, nf-core style, and subworkflows that chain them | [wet-modules/README.md](wet-modules/README.md) |
 | `examples/` | Pipelines: `plate_transfer`, `plate_assay` (transfer, then read), `parallel_extraction` (extraction, then PCR), `qpcr` (1000 samples: extraction, then RT-qPCR), `lab_tour` (five routines over every simulated machine); `hello` | their `main.nf` and `nextflow.config` |
@@ -32,12 +32,12 @@ Open http://127.0.0.1:8080, pick `parallel_extraction` and press **Side by side*
 
 ## In a pipeline
 
-A wet step is an ordinary process: label `process_wet`, a capability hint, and a script that runs `labctl run --protocol <name>` (see any module in `wet-modules/modules/`). The pipeline's config sends those processes to the `lab` executor and says how to reach the adapter:
+A wet step is an ordinary process: label `process_wet`, a capability hint, and a script that runs `labctl run --protocol <name>` (see any module in `wet-modules/modules/`). The pipeline's config sends those processes to the `labrobotics` executor and says how to reach the adapter:
 
 ```groovy
 plugins { id 'nf-labrobotics@0.1.0' }
 
-lab {
+labrobotics {
     adapter = 'http://127.0.0.1:8000'   // unset: $NF_LAB_ADAPTER
     poll = 2.s
     grace = 5.m
@@ -45,7 +45,7 @@ lab {
 
 process {
     withLabel: 'process_wet' {
-        executor = 'lab'
+        executor = 'labrobotics'
         errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }   // 75: nothing moved; 69: adapter unreachable
     }
 }
@@ -176,7 +176,7 @@ cd adapter && uv run pytest conformance --adapter http://127.0.0.1:8000 --capabi
 
 The kit checks the HTTP contract and its guarantees ([Conformance kit](adapter/README.md#conformance-kit)). Planned: a smaller kit for a lone binding, and a check that its result matches the protocol's result schema.
 
-**Protocols and pipelines.** A robot that runs protocols that already exist needs no new Nextflow code: the wet modules (in [`wet-modules/`](wet-modules/README.md)) don't know which robot runs them. A new protocol is a new wet module, one per protocol, named after it: it calls `labctl run --protocol <name> --protocol-version <x.y>` and declares `hints 'lab/capability': '<capability>'`. A new kind of machine (e.g. a thermocycler) is a new capability name, used by both the module and your binding.
+**Protocols and pipelines.** A robot that runs protocols that already exist needs no new Nextflow code: the wet modules (in [`wet-modules/`](wet-modules/README.md)) don't know which robot runs them. A new protocol is a new wet module, one per protocol, named after it: it calls `labctl run --protocol <name> --protocol-version <x.y>` and declares `hints 'labrobotics/capability': '<capability>'`. A new kind of machine (e.g. a thermocycler) is a new capability name, used by both the module and your binding.
 
 **What the lab sets, not you:** which robots it has, their capability and queue (`NF_LAB_DEVICES=capability[/queue]:count`, see [Start it](adapter/README.md#start-it)), and its deck and labware layout.
 

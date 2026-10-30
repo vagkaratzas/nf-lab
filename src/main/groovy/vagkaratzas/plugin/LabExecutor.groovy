@@ -12,11 +12,11 @@ import org.pf4j.ExtensionPoint
 /**
  * Lab executor, shape B: the task wrapper runs on the controller host,
  * and the task script drives the device through `labctl`.
- * It hands the run's `lab {}` settings to `labctl` as environment variables.
+ * It hands the run's `labrobotics {}` settings to `labctl` as environment variables.
  */
 @Slf4j
 @CompileStatic
-@ServiceName('lab')
+@ServiceName('labrobotics')
 class LabExecutor extends LocalExecutor implements ExtensionPoint {
 
     private Map<String,String> labEnv
@@ -24,7 +24,7 @@ class LabExecutor extends LocalExecutor implements ExtensionPoint {
     @Override
     protected void register() {
         super.register()
-        labEnv = new LabConfig(session.config.navigate('lab') as Map ?: [:]).toEnv()
+        labEnv = new LabConfig(session.config.navigate('labrobotics') as Map ?: [:]).toEnv()
         log.debug "[lab] settings from config: ${labEnv}"
     }
 

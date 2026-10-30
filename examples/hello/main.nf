@@ -1,8 +1,8 @@
-// Hello pipeline: one wet step on the `lab` executor, one dry step on `local`.
+// Hello pipeline: one wet step on the `labrobotics` executor, one dry step on `local`.
 
 process WET {
     label 'process_wet'
-    hints 'lab/capability': 'liquid-handling'
+    hints 'labrobotics/capability': 'liquid-handling'
 
     input:
     val sample

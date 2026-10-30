@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: rna_extraction
 description: "Extract RNA from an aliquot plate: lysis, then the lysate to a PCR plate"
 keywords: [wet-lab, liquid-handling, rna_extraction]
 lab:
-  capability: liquid-handling  # the hint the module declares (hints 'lab/capability')
+  capability: liquid-handling  # the hint the module declares (hints 'labrobotics/capability')
   protocol: rna_extraction
   protocol_version: "1.0"
   stop_boundary: "first aspirate (moves liquid)"

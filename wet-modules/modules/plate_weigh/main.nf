@@ -8,7 +8,7 @@ nextflow.enable.types = true
 process PLATE_WEIGH {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'weighing'
+    hints 'labrobotics/capability': 'weighing'
 
     input:
     plate: Plate

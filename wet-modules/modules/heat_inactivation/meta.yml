@@ -1,10 +1,10 @@
-# A wet module: nf-core meta.yml, plus `lab`: what a lab matches against its robots
+# A wet module: nf-core meta.yml, plus `labrobotics`: what a lab matches against its robots
 # (GET /devices: each robot's capability and protocols). One module per protocol.
 name: heat_inactivation
 description: "Hold a plate at a fixed temperature to inactivate an enzyme in each plate-map well"
 keywords: [wet-lab, temperature-control, heat_inactivation]
 lab:
-  capability: temperature-control  # the hint the module declares (hints 'lab/capability')
+  capability: temperature-control  # the hint the module declares (hints 'labrobotics/capability')
   protocol: heat_inactivation
   protocol_version: "1.0"
   stop_boundary: "the block's target temperature is set (plate untouched before)"

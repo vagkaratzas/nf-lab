@@ -10,7 +10,7 @@ nextflow.enable.types = true
 process REAGENT_DISPENSE {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'pumping'
+    hints 'labrobotics/capability': 'pumping'
 
     input:
     plate: Plate

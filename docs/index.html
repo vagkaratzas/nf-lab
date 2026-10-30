@@ -91,7 +91,7 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
     <div class="cols">
       <div class="card">
         <h3>Writing pipelines</h3>
-        <p>Wet steps are ordinary processes. Take a wet module, give it a plate record, send <code>process_wet</code> to the <code>lab</code> executor.</p>
+        <p>Wet steps are ordinary processes. Take a wet module, give it a plate record, send <code>process_wet</code> to the <code>labrobotics</code> executor.</p>
         <a href="https://github.com/vagkaratzas/nf-labrobotics/blob/main/wet-modules/README.md">Wet modules →</a>
       </div>
       <div class="card">
@@ -122,7 +122,7 @@ cd dashboard && uv run uvicorn nf_lab_dashboard.app:main --factory --port 8080</
   <p class="kicker">Before the run</p>
   <h2>One plate, fourteen stations</h2>
   <p class="sub">From a Nextflow pipeline, through the lab, and back into lineage.</p>
-  <p>The left half of the line is Nextflow: your pipeline, a wet module, the <code>lab</code> executor and <code>labctl</code>. The right half is the lab: the device adapter, its ledger and pools, the person at the bench, and the robots. Between them, one HTTP contract.</p>
+  <p>The left half of the line is Nextflow: your pipeline, a wet module, the <code>labrobotics</code> executor and <code>labctl</code>. The right half is the lab: the device adapter, its ledger and pools, the person at the bench, and the robots. Between them, one HTTP contract.</p>
   <p>Plate Q01 waits at the start. Press <b>Start</b>, or <b>Play tour</b> to let it ride on its own.</p>
 </template>
 
@@ -149,7 +149,7 @@ wet = RT_QPCR(plates)</code></pre>
 <pre><code>process QPCR {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'qpcr'
+    hints 'labrobotics/capability': 'qpcr'
 
     input:
     plate: Plate
@@ -172,10 +172,10 @@ wet = RT_QPCR(plates)</code></pre>
   <p class="kicker">Station 3 · Nextflow</p>
   <h2>The lab executor</h2>
   <p class="sub">Wet tasks go to the lab, not to the cluster.</p>
-  <p>The plugin adds an executor named <code>lab</code>. It runs each wet task where Nextflow runs, like the local executor: the task is <code>labctl</code> waiting on the lab. It also hands the task its routing: the <code>lab/capability</code> hint, the <code>queue</code> directive and the run's session become <code>NF_LAB_CAPABILITY</code>, <code>NF_LAB_QUEUE</code> and <code>NF_LAB_SESSION</code>. The adapter address, poll interval and grace period come from the <code>lab {}</code> scope.</p>
+  <p>The plugin adds an executor named <code>labrobotics</code>. It runs each wet task where Nextflow runs, like the local executor: the task is <code>labctl</code> waiting on the lab. It also hands the task its routing: the <code>labrobotics/capability</code> hint, the <code>queue</code> directive and the run's session become <code>NF_LAB_CAPABILITY</code>, <code>NF_LAB_QUEUE</code> and <code>NF_LAB_SESSION</code>. The adapter address, poll interval and grace period come from the <code>labrobotics {}</code> scope.</p>
 <pre><code>plugins { id 'nf-labrobotics@0.1.0' }
 
-lab {
+labrobotics {
     adapter = 'http://127.0.0.1:8000'   // unset: $NF_LAB_ADAPTER
     poll = 2.s
     grace = 5.m
@@ -184,7 +184,7 @@ lab {
 process {
     errorStrategy = 'finish'
     withLabel: 'process_wet' {
-        executor = 'lab'
+        executor = 'labrobotics'
         errorStrategy = { task.exitStatus in [69, 75] ? 'retry' : 'finish' }
     }
 }</code></pre>

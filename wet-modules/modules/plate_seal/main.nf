@@ -11,7 +11,7 @@ nextflow.enable.types = true
 process PLATE_SEAL {
     tag "${plate.id}"
     label 'process_wet'
-    hints 'lab/capability': 'sealing'
+    hints 'labrobotics/capability': 'sealing'
 
     input:
     plate: Plate
