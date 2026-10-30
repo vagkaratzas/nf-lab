@@ -204,7 +204,15 @@ The end-to-end checks run the `validation/` pipeline against a simulated device 
 
 ## Publishing
 
-Not published to the Nextflow plugin registry yet. `make install` puts the plugin in `~/.nextflow/plugins/nf-labrobotics-0.1.0`, and `id 'nf-labrobotics@0.1.0'` loads it from there. To publish: set your registry token as `npr.apiKey` in `$HOME/.gradle/gradle.properties` or as `NPR_API_KEY` in the environment, then `make release`. Never commit it.
+Releases are in the [Nextflow plugin registry](https://registry.nextflow.io/plugins/nf-labrobotics); `id 'nf-labrobotics@<version>'` in `plugins {}` fetches one. For a local build, `make install` puts the plugin in `~/.nextflow/plugins/nf-labrobotics-<version>`, and the same `id` loads it from there.
+
+A release happens when `main` carries a version that has no tag yet. Nothing bumps the version for you:
+
+1. On `dev`, set `version` in `build.gradle` and add a `## [<version>]` section to `CHANGELOG.md`.
+2. Merge `dev` into `main`.
+3. When CI passes on `main`, the Publish workflow runs `make release` (Gradle `releasePlugin`), then tags `v<version>` and makes the GitHub release, with that CHANGELOG section as its notes. A version that is already tagged is skipped.
+
+The registry reads this README as the plugin's description and refuses a release unless it has a summary, getting-started steps, examples with code blocks and a License section. The workflow takes the registry token from the `NF_PLUGIN_PUBLISH_TOKEN` secret. To run it by hand: `gh workflow run Publish --ref main`. To publish from your machine instead, set the token as `npr.apiKey` in `$HOME/.gradle/gradle.properties` or as `NPR_API_KEY` in the environment, then `make release`. Never commit it.
 
 ## License
 
